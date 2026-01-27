@@ -23,7 +23,8 @@ export default function AdminPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [msg, setMsg] = useState("");
 
-  const authHeader = useMemo(() => ({ Authorization: `Bearer ${password}` }), [password]);
+  const authHeader = useMemo(() => ({ "x-admin-password": password }), [password]);
+
 
   async function load() {
     setMsg("loading...");

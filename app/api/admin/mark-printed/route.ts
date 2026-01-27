@@ -2,13 +2,18 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 function isAuthed(req: Request) {
-  const auth = req.headers.get("authorization") || "";
-  const expected = `Bearer ${process.env.ADMIN_PASSWORD}`;
-  return auth === expected;
+  const got = req.headers.get("x-admin-password") || "";
+  const expected = process.env.ADMIN_PASSWORD || "";
+  return expected.length > 0 && got === expected;
 }
 
 export async function POST(req: Request) {
-  if (!isAuthed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!isAuthed(req)) {
+    return NextResponse.json(
+      { error: "unauthorized", hasEnv: Boolean(process.env.ADMIN_PASSWORD) },
+      { status: 401 }
+    );
+  }
 
   const body = await req.json();
   const id = String(body?.id ?? "");
