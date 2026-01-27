@@ -1,65 +1,93 @@
-import Image from "next/image";
+"use client";
+
+import Script from "next/script";
+import { useState } from "react";
+
+declare global {
+  interface Window {
+    snap: any;
+  }
+}
 
 export default function Home() {
+  const [input, setInput] = useState("");
+  const [qty, setQty] = useState(1);
+  const [size, setSize] = useState("4x6");
+  const [msg, setMsg] = useState("");
+
+  async function createAndPay() {
+    setMsg("loading...");
+    const r = await fetch("/api/print-orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fotoshare_input: input, qty, size }),
+    });
+
+    const text = await r.text();
+    setMsg(`HTTP ${r.status}\n${text}`);
+
+    if (!r.ok) return;
+
+    const j = JSON.parse(text);
+    if (!window.snap) {
+      setMsg((m) => m + "\n\nSnap.js not loaded yet.");
+      return;
+    }
+
+    window.snap.pay(j.snap_token, {
+      gopayMode: "qr",
+      onSuccess: () => setMsg("Payment success (cek webhook nanti untuk PAID)."),
+      onPending: () => setMsg("Payment pending (scan QR)."),
+      onError: () => setMsg("Payment error."),
+      onClose: () => setMsg("Closed payment popup."),
+    });
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <>
+      <Script
+        src="https://app.sandbox.midtrans.com/snap/snap.js"
+        data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
+      />
+
+      <main style={{ maxWidth: 640, margin: "40px auto", padding: 16 }}>
+        <h1>Print Kiosk</h1>
+
+        <div style={{ marginTop: 12 }}>
+          <div>FotoShare link / token</div>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            style={{ width: "100%", padding: 10 }}
+            placeholder="https://fotoshare.co/i/4dsstyb atau 4dsstyb"
+          />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+          <select value={size} onChange={(e) => setSize(e.target.value)} style={{ padding: 10 }}>
+            <option value="4x6">4x6</option>
+            <option value="strip">strip</option>
+            <option value="6x8">6x8</option>
+          </select>
+
+          <input
+            type="number"
+            min={1}
+            max={20}
+            value={qty}
+            onChange={(e) => setQty(Number(e.target.value))}
+            style={{ width: 120, padding: 10 }}
+          />
         </div>
+
+        <button onClick={createAndPay} style={{ marginTop: 12, padding: "10px 14px" }}>
+          Pay (QRIS)
+        </button>
+
+        <pre style={{ marginTop: 12, background: "#111", color: "#0f0", padding: 12, overflow: "auto" }}>
+          {msg}
+        </pre>
       </main>
-    </div>
+    </>
   );
 }
