@@ -29,6 +29,7 @@ function formatIDR(n: number) {
 }
 
 export default function KioskPage() {
+  const [name, setName] = useState("");
   const [input, setInput] = useState("");
   const [qty, setQty] = useState(1);
   const [size, setSize] = useState<SizeKey>("4x6");
@@ -61,7 +62,7 @@ export default function KioskPage() {
       const r = await fetch("/api/print-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fotoshare_input: input, qty, size }),
+        body: JSON.stringify({ fotoshare_input: input, qty, size, customer_name: name }),
       });
 
       const text = await r.text();
@@ -146,6 +147,16 @@ export default function KioskPage() {
                       Tempel link seperti <span className="text-zinc-300">fotoshare.co/i/xxxxx</span> atau token saja.
                     </p>
                   </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="text-xs text-zinc-400">Nama (opsional)</label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="contoh: Rani / Budi"
+                    className="mt-2 w-full rounded-2xl border border-white/10 bg-zinc-950/40 px-4 py-4 text-base outline-none ring-0 placeholder:text-zinc-600 focus:border-white/20"
+                  />
                 </div>
 
                 <div className="mt-4">

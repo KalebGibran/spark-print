@@ -18,9 +18,9 @@ export async function GET(req: Request) {
   const { data, error } = await supabaseAdmin
     .from("print_orders")
     .select("id, fotoshare_token, size, qty, amount, status, created_at, paid_at, midtrans_order_id")
-    .eq("status", "PAID")
+    .in("status", ["PAID", "PRINTED"])
     .order("paid_at", { ascending: false })
-    .limit(50);
+    .limit(100);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, orders: data });
