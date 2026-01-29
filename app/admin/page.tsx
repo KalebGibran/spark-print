@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 type Order = {
   id: string;
+  customer_name: string | null;
+  customer_email: string | null;
   fotoshare_token: string;
   size: string;
   qty: number;
@@ -117,6 +119,8 @@ export default function AdminPage() {
               <tr>
                 <th className="px-4 py-3 text-left">Paid at</th>
                 <th className="px-4 py-3 text-left">Token</th>
+                <th className="px-4 py-3 text-left">Name</th>
+                <th className="px-4 py-3 text-left">Email</th>
                 <th className="px-4 py-3 text-left">Size</th>
                 <th className="px-4 py-3 text-left">Qty</th>
                 <th className="px-4 py-3 text-left">Total</th>
@@ -130,6 +134,8 @@ export default function AdminPage() {
                 <tr key={o.id} className="border-t border-white/10">
                   <td className="px-4 py-3">{o.paid_at ?? "-"}</td>
                   <td className="px-4 py-3 font-mono">{o.fotoshare_token}</td>
+                  <td className="px-4 py-3">{o.customer_name || "-"}</td>
+                  <td className="px-4 py-3">{o.customer_email || "-"}</td>
                   <td className="px-4 py-3">{o.size}</td>
                   <td className="px-4 py-3">{o.qty}</td>
                   <td className="px-4 py-3">Rp{formatIDR(o.amount)}</td>

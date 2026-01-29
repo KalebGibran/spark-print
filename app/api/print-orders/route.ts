@@ -1,16 +1,21 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { supabaseAdmin } from "../../../lib/supabaseAdmin";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const MIDTRANS_IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === "true";
 
+type SizeKey = "4x6" | "strip" | "6x8";
+
 function parseFotoshareToken(input: string): string {
   const s = input.trim();
+
+  // allow token-only
   if (!s.includes("://")) {
     if (!/^[a-zA-Z0-9]+$/.test(s)) throw new Error("Invalid token");
     return s;
   }
+
   const u = new URL(s);
   if (u.hostname !== "fotoshare.co") throw new Error("Only fotoshare.co allowed");
   const m = u.pathname.match(/^\/i\/([a-zA-Z0-9]+)$/);
@@ -22,20 +27,34 @@ function midtransAuth(serverKey: string) {
   return "Basic " + Buffer.from(`${serverKey}:`).toString("base64");
 }
 
+function isValidEmail(email: string) {
+  if (!email) return true; // optional
+  // simple robust-enough check
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
     const fotoshare_input = String(body?.fotoshare_input ?? "");
     const qty = Number(body?.qty ?? 1);
-    const size = String(body?.size ?? "4x6");
+    const size = String(body?.size ?? "4x6") as SizeKey;
+
+    const customer_name = String(body?.customer_name ?? "").trim().slice(0, 40);
+    const customer_email = String(body?.customer_email ?? "").trim().toLowerCase().slice(0, 120);
 
     if (!fotoshare_input) return NextResponse.json({ error: "fotoshare_input required" }, { status: 400 });
     if (!Number.isFinite(qty) || qty < 1 || qty > 20) return NextResponse.json({ error: "qty must be 1..20" }, { status: 400 });
 
-    const allowedSizes = new Set(["4x6", "strip", "6x8"]);
+    const allowedSizes = new Set<SizeKey>(["4x6", "strip", "6x8"]);
     if (!allowedSizes.has(size)) return NextResponse.json({ error: "invalid size" }, { status: 400 });
 
-    // sementara pricing dummy (kamu bisa ganti nanti)
+    if (!isValidEmail(customer_email)) {
+      return NextResponse.json({ error: "invalid email" }, { status: 400 });
+    }
+
+    // pricing (sementara)
     const unitPrice = size === "6x8" ? 20000 : size === "strip" ? 15000 : 10000;
     const grossAmount = unitPrice * qty;
 
@@ -44,7 +63,7 @@ export async function POST(req: Request) {
     const shortRand = crypto.randomBytes(4).toString("hex");
     const midtrans_order_id = `PRINT-${Date.now()}-${shortRand}`.slice(0, 50);
 
-    // insert dulu
+    // insert order dulu
     const { data: order, error: insErr } = await supabaseAdmin
       .from("print_orders")
       .insert({
@@ -54,6 +73,8 @@ export async function POST(req: Request) {
         qty,
         amount: grossAmount,
         status: "PENDING",
+        customer_name: customer_name || null,
+        customer_email: customer_email || null,
       })
       .select("*")
       .single();
@@ -66,10 +87,15 @@ export async function POST(req: Request) {
 
     const payload = {
       transaction_details: { order_id: midtrans_order_id, gross_amount: grossAmount },
-      enabled_payments: ["gopay"], // nanti di client: gopayMode:"qr"
+      enabled_payments: ["gopay"], // kiosk QR via gopayMode:"qr"
       item_details: [
         { id: `print-${size}`, price: unitPrice, quantity: qty, name: `Photo Print ${size}` },
       ],
+      // optional: tampilkan customer detail di UI payment
+      customer_details: {
+        first_name: customer_name || "Customer",
+        email: customer_email || undefined,
+      },
     };
 
     const resp = await fetch(snapUrl, {

@@ -9,15 +9,12 @@ function isAuthed(req: Request) {
 
 export async function GET(req: Request) {
   if (!isAuthed(req)) {
-    return NextResponse.json(
-      { error: "unauthorized", hasEnv: Boolean(process.env.ADMIN_PASSWORD) },
-      { status: 401 }
-    );
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   const { data, error } = await supabaseAdmin
     .from("print_orders")
-    .select("id, fotoshare_token, size, qty, amount, status, created_at, paid_at, midtrans_order_id")
+    .select("id, customer_name, customer_email, fotoshare_token, size, qty, amount, status, created_at, paid_at, midtrans_order_id")
     .in("status", ["PAID", "PRINTED"])
     .order("paid_at", { ascending: false })
     .limit(100);
