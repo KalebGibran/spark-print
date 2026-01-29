@@ -9,18 +9,10 @@ declare global {
   }
 }
 
-type SizeKey = "4x6" | "strip" | "6x8";
+type SizeKey = "4x6";
 
-const SIZE_OPTIONS: { key: SizeKey; label: string; hint: string }[] = [
-  { key: "4x6", label: "4×6", hint: "Standard photo print" },
-  { key: "strip", label: "Strip", hint: "Photobooth-style strip" },
-  { key: "6x8", label: "6×8", hint: "Large / premium" },
-];
-
-function unitPrice(size: SizeKey) {
-  if (size === "6x8") return 20000;
-  if (size === "strip") return 15000;
-  return 10000;
+function unitPrice(_size: SizeKey) {
+  return 10000; // 4x6 fixed
 }
 
 function formatIDR(n: number) {
@@ -33,21 +25,34 @@ function isValidEmail(email: string) {
 }
 
 export default function KioskPage() {
+  // Optional identity
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
 
+  // Fotoshare + order
   const [input, setInput] = useState("");
-  const [qty, setQty] = useState(1);
-  const [size, setSize] = useState<SizeKey>("4x6");
+  const [qty, setQty] = useState(0); // start at 0
+  const size: SizeKey = "4x6"; // fixed size
+
   const [loading, setLoading] = useState(false);
+  const [snapReady, setSnapReady] = useState(false);
 
   const [status, setStatus] = useState<
     { kind: "idle" | "info" | "ok" | "warn" | "err"; text: string } | undefined
-  >({ kind: "info", text: "Masukkan link/token FotoShare (atau scan barcode), pilih ukuran & jumlah, lalu bayar QRIS." });
+  >({ kind: "info", text: "Scan barcode / tempel link FotoShare, atur jumlah, lalu bayar QRIS." });
+
+  // ✅ success modal state
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successInfo, setSuccessInfo] = useState<{
+    midtrans_order_id: string;
+    amount: number;
+    email: string | null;
+    name: string | null;
+  } | null>(null);
 
   const scanRef = useRef<HTMLInputElement | null>(null);
 
-  const total = useMemo(() => unitPrice(size) * qty, [size, qty]);
+  const total = useMemo(() => unitPrice(size) * qty, [qty, size]);
 
   const snapScriptUrl =
     process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true"
@@ -55,12 +60,32 @@ export default function KioskPage() {
       : "https://app.sandbox.midtrans.com/snap/snap.js";
 
   function bumpQty(delta: number) {
-    setQty((q) => Math.min(20, Math.max(1, q + delta)));
+    setQty((q) => Math.min(20, Math.max(0, q + delta))); // min 0
   }
+
+  function resetForm() {
+    setName("");
+    setEmail("");
+    setInput("");
+    setQty(0);
+    setTimeout(() => scanRef.current?.focus(), 50);
+  }
+
+  const canPay =
+    !loading &&
+    snapReady &&
+    input.trim().length > 0 &&
+    qty >= 1 &&
+    isValidEmail(email.trim());
 
   async function pay() {
     if (!input.trim()) {
       setStatus({ kind: "warn", text: "Link/token FotoShare masih kosong." });
+      scanRef.current?.focus();
+      return;
+    }
+    if (qty < 1) {
+      setStatus({ kind: "warn", text: "Pilih jumlah print dulu (minimal 1)." });
       return;
     }
     if (!window.snap) {
@@ -82,7 +107,7 @@ export default function KioskPage() {
         body: JSON.stringify({
           fotoshare_input: input,
           qty,
-          size,
+          size, // fixed 4x6
           customer_name: name,
           customer_email: email,
         }),
@@ -96,13 +121,30 @@ export default function KioskPage() {
 
       const j = JSON.parse(text) as { snap_token: string; midtrans_order_id: string };
 
+      // store info for modal
+      setSuccessInfo({
+        midtrans_order_id: j.midtrans_order_id ?? "-",
+        amount: total,
+        email: email.trim() ? email.trim() : null,
+        name: name.trim() ? name.trim() : null,
+      });
+
       setStatus({ kind: "info", text: "Menampilkan QRIS..." });
 
       window.snap.pay(j.snap_token, {
         gopayMode: "qr",
         onSuccess: () => {
-          // Sukses yang valid tetap webhook. Ini hanya UX.
+          // UX only. Valid PAID tetap via webhook.
           setStatus({ kind: "ok", text: "Pembayaran sukses. Silakan tunggu diproses operator." });
+
+          // show modal
+          setSuccessOpen(true);
+
+          // reset for next customer
+          resetForm();
+
+          // auto close
+          setTimeout(() => setSuccessOpen(false), 30000);
         },
         onPending: () => setStatus({ kind: "info", text: "Menunggu pembayaran (scan QRIS)." }),
         onError: () => setStatus({ kind: "err", text: "Pembayaran gagal. Coba ulang." }),
@@ -126,7 +168,91 @@ export default function KioskPage() {
 
   return (
     <>
-      <Script src={snapScriptUrl} data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY} />
+      <Script
+        src={snapScriptUrl}
+        data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
+        onLoad={() => setSnapReady(true)}
+        onError={() => setSnapReady(false)}
+      />
+
+      {/* ✅ Success Modal */}
+      {successOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSuccessOpen(false)}
+          />
+
+          <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-zinc-950/90 p-6 shadow-2xl animate-[pop_180ms_ease-out]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  Payment Success
+                </div>
+                <h3 className="mt-3 text-xl font-semibold">Pembayaran berhasil</h3>
+                <p className="mt-1 text-sm text-zinc-300">
+                  Silakan pickup di kasir dengan menunjukkan receipt/bukti bayar.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setSuccessOpen(false)}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+              >
+                Tutup
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-400">Order ID</span>
+                <span className="font-mono text-zinc-100">{successInfo?.midtrans_order_id ?? "-"}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-zinc-400">Total</span>
+                <span className="text-zinc-100">Rp{formatIDR(successInfo?.amount ?? 0)}</span>
+              </div>
+
+              {successInfo?.name && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-zinc-400">Nama</span>
+                  <span className="text-zinc-100">{successInfo.name}</span>
+                </div>
+              )}
+
+              <div className="mt-1 rounded-xl border border-white/10 bg-zinc-950/40 p-3 text-xs text-zinc-300">
+                {successInfo?.email ? (
+                  <>
+                    Receipt dikirim ke: <span className="font-semibold">{successInfo.email}</span>
+                    <br />
+                    Jika email belum masuk, tunggu 1–2 menit lalu cek Spam/Promotions.
+                  </>
+                ) : (
+                  <>
+                    Kamu belum mengisi email. Untuk receipt email, isi email pada transaksi berikutnya.
+                    <br />
+                    Untuk pickup, tunjukkan <span className="font-semibold">Order ID</span> di atas ke kasir.
+                  </>
+                )}
+              </div>
+            </div>
+
+            <style jsx>{`
+              @keyframes pop {
+                from {
+                  transform: scale(0.96);
+                  opacity: 0;
+                }
+                to {
+                  transform: scale(1);
+                  opacity: 1;
+                }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
 
       <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 text-zinc-100">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
@@ -200,35 +326,21 @@ export default function KioskPage() {
                     ref={scanRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="https://fotoshare.co/i/4dsstyb atau 4dsstyb"
+                    placeholder="https://fotoshare.co/i/xxxxx atau xxxxx"
                     className="mt-2 w-full rounded-2xl border border-white/10 bg-zinc-950/40 px-4 py-4 text-base outline-none placeholder:text-zinc-600 focus:border-white/20"
                   />
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {/* Size */}
+                  {/* Size info */}
                   <div className="rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
                     <div className="text-xs text-zinc-400">Ukuran</div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {SIZE_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.key}
-                          type="button"
-                          onClick={() => setSize(opt.key)}
-                          className={[
-                            "rounded-2xl px-3 py-3 text-sm font-medium transition",
-                            size === opt.key
-                              ? "border border-white/20 bg-white/10"
-                              : "border border-white/10 bg-white/5 hover:bg-white/10",
-                          ].join(" ")}
-                        >
-                          <div>{opt.label}</div>
-                          <div className="mt-1 text-[11px] text-zinc-400">{opt.hint}</div>
-                        </button>
-                      ))}
+                    <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
+                      <div className="text-sm font-semibold">4×6</div>
+                      <div className="mt-1 text-xs text-zinc-400">Standard photo print</div>
                     </div>
                     <div className="mt-3 text-xs text-zinc-400">
-                      Harga/lembar: <span className="text-zinc-200">Rp{formatIDR(unitPrice(size))}</span>
+                      Harga/lembar: <span className="text-zinc-200">Rp{formatIDR(unitPrice("4x6"))}</span>
                     </div>
                   </div>
 
@@ -240,6 +352,7 @@ export default function KioskPage() {
                         type="button"
                         onClick={() => bumpQty(-1)}
                         className="h-14 w-14 rounded-2xl border border-white/10 bg-white/5 text-2xl hover:bg-white/10"
+                        aria-label="Decrease quantity"
                       >
                         −
                       </button>
@@ -253,24 +366,24 @@ export default function KioskPage() {
                         type="button"
                         onClick={() => bumpQty(1)}
                         className="h-14 w-14 rounded-2xl border border-white/10 bg-white/5 text-2xl hover:bg-white/10"
+                        aria-label="Increase quantity"
                       >
                         +
                       </button>
                     </div>
-                    <div className="mt-4 text-xs text-zinc-400">
-                      Tips: untuk photostrip, pilih <span className="text-zinc-200">Strip</span>.
-                    </div>
+                    <div className="mt-4 text-xs text-zinc-400">Tips: scan barcode → set jumlah → bayar.</div>
                   </div>
                 </div>
 
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="text-sm text-zinc-400">
                     Metode bayar: <span className="text-zinc-200">QRIS</span>
+                    {!snapReady && <span className="ml-2 text-xs text-zinc-500">(loading payment...)</span>}
                   </div>
 
                   <button
                     onClick={pay}
-                    disabled={loading}
+                    disabled={!canPay}
                     className={[
                       "w-full sm:w-auto rounded-2xl px-6 py-4 text-base font-semibold transition",
                       "bg-white text-zinc-950 hover:bg-zinc-100 active:scale-[0.99]",
@@ -284,9 +397,7 @@ export default function KioskPage() {
 
               <div className={`mt-4 rounded-3xl border p-4 sm:p-5 ${statusClasses}`}>
                 <div className="text-xs uppercase tracking-wide opacity-80">Status</div>
-                <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">
-                  {status?.text ?? "-"}
-                </div>
+                <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{status?.text ?? "-"}</div>
               </div>
             </section>
 
