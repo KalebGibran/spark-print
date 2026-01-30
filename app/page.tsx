@@ -2,6 +2,8 @@
 
 import Script from "next/script";
 import { useMemo, useRef, useState } from "react";
+import CameraScannerModal from "./components/CameraScannerModal";
+
 
 
 declare global {
@@ -43,6 +45,8 @@ export default function KioskPage() {
   const [status, setStatus] = useState<
     { kind: "idle" | "info" | "ok" | "warn" | "err"; text: string } | undefined
   >({ kind: "info", text: "Scan barcode / tempel link FotoShare, atur jumlah, lalu bayar QRIS." });
+
+  const [scanOpen, setScanOpen] = useState(false);
 
   // Success modal state
   const [successOpen, setSuccessOpen] = useState(false);
@@ -281,6 +285,16 @@ export default function KioskPage() {
         </div>
       )}
 
+      <CameraScannerModal
+        open={scanOpen}
+        onClose={() => setScanOpen(false)}
+        onResult={(text) => {
+          setInput(text);
+          setQty((q) => (q < 1 ? 1 : q));
+          setTimeout(() => scanRef.current?.focus(), 50);
+        }}
+      />
+
       <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 text-zinc-100">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
           {/* Header */}
@@ -301,7 +315,7 @@ export default function KioskPage() {
               <div className="text-2xl font-semibold">Rp{formatIDR(total)}</div>
             </div>
           </div>
-
+          
           {/* Layout */}
           <div className="mt-6 grid gap-4 lg:grid-cols-5">
             {/* Left */}
@@ -341,14 +355,26 @@ export default function KioskPage() {
                 <div className="mt-4">
                   <div className="flex items-center justify-between gap-3">
                     <label className="text-xs text-zinc-400">FotoShare link / token</label>
-                    <button
-                      type="button"
-                      onClick={() => scanRef.current?.focus()}
-                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
-                    >
-                      Focus Scan
-                    </button>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setScanOpen(true)}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
+                      >
+                        Scan Camera
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => scanRef.current?.focus()}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
+                      >
+                        Focus Scan
+                      </button>
+                    </div>
                   </div>
+
                   <input
                     ref={scanRef}
                     value={input}
