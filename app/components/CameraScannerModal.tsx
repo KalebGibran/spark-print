@@ -3,13 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 
-
-
 type Props = {
   open: boolean;
   onClose: () => void;
   onResult: (text: string) => void;
 };
+
+type ControlsLike = { stop: () => void };
 
 export default function CameraScannerModal({ open, onClose, onResult }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -29,13 +29,20 @@ export default function CameraScannerModal({ open, onClose, onResult }: Props) {
 
       try {
         if (!videoRef.current) throw new Error("Video element missing");
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera API not supported");
 
-        const reader = new BrowserMultiFormatReader(undefined, {
-          delayBetweenScanAttempts: 120,
-          delayBetweenScanSuccess: 400,
+        // 1) FORCE permission prompt (this triggers the Allow popup)
+        const tmpStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
         });
 
-        // pilih kamera belakang kalau ada
+        // stop immediately; we only need it to trigger permission
+        tmpStream.getTracks().forEach((t) => t.stop());
+
+        if (cancelled) return;
+
+        // 2) Now enumerate devices AFTER permission is granted
         const devices = await BrowserMultiFormatReader.listVideoInputDevices();
         const preferred =
           devices.find((d) => /back|rear|environment/i.test(d.label))?.deviceId ||
@@ -43,16 +50,22 @@ export default function CameraScannerModal({ open, onClose, onResult }: Props) {
 
         if (!preferred) throw new Error("No camera found");
 
-        const controls = await reader.decodeFromVideoDevice(
+        const reader = new BrowserMultiFormatReader(undefined, {
+          delayBetweenScanAttempts: 120,
+          delayBetweenScanSuccess: 400,
+        });
+
+        // 3) Decode continuously from chosen device
+        const controls: ControlsLike = await reader.decodeFromVideoDevice(
           preferred,
           videoRef.current,
-          (result, _error, controls) => {
+          (result: any, _error: any, controls: ControlsLike) => {
             stopRef.current = () => controls.stop();
 
-            if (result?.getText()) {
-              const text = result.getText();
-              controls.stop(); // stop scanning immediately
-              onResult(text);
+            const text = result?.getText?.();
+            if (text) {
+              controls.stop();
+              onResult(String(text));
               onClose();
             }
           }
@@ -63,7 +76,14 @@ export default function CameraScannerModal({ open, onClose, onResult }: Props) {
       } catch (e: any) {
         if (!cancelled) {
           setStarting(false);
-          setErr(e?.message ?? "Failed to start camera");
+          const name = String(e?.name ?? "");
+          const msg =
+            name === "NotAllowedError"
+              ? "Camera permission blocked. Allow camera for this site."
+              : name === "NotFoundError"
+              ? "No camera device found on this device."
+              : e?.message ?? "Failed to start camera";
+          setErr(msg);
         }
       }
     }
@@ -106,22 +126,20 @@ export default function CameraScannerModal({ open, onClose, onResult }: Props) {
 
         {starting && (
           <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-300">
-            Menyalakan kamera...
+            Menyalakan kamera... (kalau diminta izin, klik Allow)
           </div>
         )}
 
         {err && (
           <div className="mt-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200">
             {err}
-            <div className="mt-1 text-red-200/80">
-              Tips: pastikan izin kamera di-allow, dan akses lewat HTTPS (Vercel aman).
+            <div className="mt-2 text-red-200/80">
+              Mac: System Settings → Privacy & Security → Camera → allow Chrome/Safari.
+              <br />
+              Chrome: lock icon → Site settings → Camera → Allow.
             </div>
           </div>
         )}
-
-        <div className="mt-3 px-2 pb-2 text-xs text-zinc-500">
-          iPhone: Settings → Safari → Camera → Allow.
-        </div>
       </div>
     </div>
   );
