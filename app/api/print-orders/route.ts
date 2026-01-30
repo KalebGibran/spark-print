@@ -10,7 +10,6 @@ type SizeKey = "4x6" | "strip" | "6x8";
 function parseFotoshareToken(input: string): string {
   const s = input.trim();
 
-  // allow token-only
   if (!s.includes("://")) {
     if (!/^[a-zA-Z0-9]+$/.test(s)) throw new Error("Invalid token");
     return s;
@@ -28,13 +27,16 @@ function midtransAuth(serverKey: string) {
 }
 
 function isValidEmail(email: string) {
-  if (!email) return true; // optional
-  // simple robust-enough check
+  if (!email) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 export async function POST(req: Request) {
   try {
+    if (!MIDTRANS_SERVER_KEY) {
+      return NextResponse.json({ error: "MIDTRANS_SERVER_KEY missing" }, { status: 500 });
+    }
+
     const body = await req.json();
 
     const fotoshare_input = String(body?.fotoshare_input ?? "");
@@ -45,7 +47,9 @@ export async function POST(req: Request) {
     const customer_email = String(body?.customer_email ?? "").trim().toLowerCase().slice(0, 120);
 
     if (!fotoshare_input) return NextResponse.json({ error: "fotoshare_input required" }, { status: 400 });
-    if (!Number.isFinite(qty) || qty < 1 || qty > 20) return NextResponse.json({ error: "qty must be 1..20" }, { status: 400 });
+    if (!Number.isFinite(qty) || qty < 1 || qty > 20) {
+      return NextResponse.json({ error: "qty must be 1..20" }, { status: 400 });
+    }
 
     const allowedSizes = new Set<SizeKey>(["4x6", "strip", "6x8"]);
     if (!allowedSizes.has(size)) return NextResponse.json({ error: "invalid size" }, { status: 400 });
@@ -63,7 +67,7 @@ export async function POST(req: Request) {
     const shortRand = crypto.randomBytes(4).toString("hex");
     const midtrans_order_id = `PRINT-${Date.now()}-${shortRand}`.slice(0, 50);
 
-    // insert order dulu
+    // 1) Insert order dulu (audit trail)
     const { data: order, error: insErr } = await supabaseAdmin
       .from("print_orders")
       .insert({
@@ -75,6 +79,7 @@ export async function POST(req: Request) {
         status: "PENDING",
         customer_name: customer_name || null,
         customer_email: customer_email || null,
+        snap_error: null,
       })
       .select("*")
       .single();
@@ -87,17 +92,15 @@ export async function POST(req: Request) {
 
     const payload = {
       transaction_details: { order_id: midtrans_order_id, gross_amount: grossAmount },
-      enabled_payments: ["gopay"], // kiosk QR via gopayMode:"qr"
-      item_details: [
-        { id: `print-${size}`, price: unitPrice, quantity: qty, name: `Photo Print ${size}` },
-      ],
-      // optional: tampilkan customer detail di UI payment
+      enabled_payments: ["gopay"],
+      item_details: [{ id: `print-${size}`, price: unitPrice, quantity: qty, name: `Photo Print ${size}` }],
       customer_details: {
         first_name: customer_name || "Customer",
         email: customer_email || undefined,
       },
     };
 
+    // 2) Call Midtrans Snap
     const resp = await fetch(snapUrl, {
       method: "POST",
       headers: {
@@ -109,15 +112,31 @@ export async function POST(req: Request) {
     });
 
     const text = await resp.text();
+
+    // 3) Kalau gagal → update order biar tidak nyangkut
     if (!resp.ok) {
+      await supabaseAdmin
+        .from("print_orders")
+        .update({
+          status: "FAILED",
+          snap_error: `snap_error_http_${resp.status}: ${text}`.slice(0, 2000),
+        })
+        .eq("id", order.id);
+
       return NextResponse.json({ error: "midtrans_error", detail: text }, { status: 502 });
     }
 
     const snap = JSON.parse(text) as { token: string; redirect_url: string };
 
+    // 4) Simpan token + timestamp
     await supabaseAdmin
       .from("print_orders")
-      .update({ snap_token: snap.token, snap_redirect_url: snap.redirect_url })
+      .update({
+        snap_token: snap.token,
+        snap_redirect_url: snap.redirect_url,
+        snap_created_at: new Date().toISOString(),
+        snap_error: null,
+      })
       .eq("id", order.id);
 
     return NextResponse.json({

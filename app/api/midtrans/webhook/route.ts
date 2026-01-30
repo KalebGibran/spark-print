@@ -20,7 +20,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad_payload" }, { status: 400 });
   }
 
-  // Verify Midtrans signature
   const expected = sha512hex(order_id + status_code + gross_amount + MIDTRANS_SERVER_KEY);
   if (expected !== signature_key) {
     return NextResponse.json({ error: "invalid_signature" }, { status: 401 });
@@ -39,13 +38,25 @@ export async function POST(req: Request) {
     (transaction_status === "expire" || transaction_status === "cancel" || transaction_status === "deny") ? "FAILED" :
     "PENDING";
 
+  // Fetch existing paid_at once (avoid overwriting)
+  const { data: existing, error: selErr } = await supabaseAdmin
+    .from("print_orders")
+    .select("id, paid_at, status")
+    .eq("midtrans_order_id", order_id)
+    .maybeSingle();
+
+  if (selErr) return NextResponse.json({ error: selErr.message }, { status: 500 });
+  if (!existing) return NextResponse.json({ ok: true, msg: "order_not_found" });
+
+  const shouldSetPaidAt = isPaid && !existing.paid_at;
+
+  const updatePayload: any = { status: newStatus };
+  if (shouldSetPaidAt) updatePayload.paid_at = new Date().toISOString();
+
   await supabaseAdmin
     .from("print_orders")
-    .update({
-      status: newStatus,
-      paid_at: isPaid ? new Date().toISOString() : null,
-    })
-    .eq("midtrans_order_id", order_id);
+    .update(updatePayload)
+    .eq("id", existing.id);
 
   return NextResponse.json({ ok: true });
 }

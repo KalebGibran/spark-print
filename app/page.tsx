@@ -3,6 +3,7 @@
 import Script from "next/script";
 import { useMemo, useRef, useState } from "react";
 
+
 declare global {
   interface Window {
     snap: any;
@@ -24,6 +25,8 @@ function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+const SUCCESS_MODAL_AUTO_CLOSE_MS = 30000;
+
 export default function KioskPage() {
   // Optional identity
   const [name, setName] = useState("");
@@ -31,8 +34,8 @@ export default function KioskPage() {
 
   // Fotoshare + order
   const [input, setInput] = useState("");
-  const [qty, setQty] = useState(0); // start at 0
-  const size: SizeKey = "4x6"; // fixed size
+  const [qty, setQty] = useState(0);
+  const size: SizeKey = "4x6";
 
   const [loading, setLoading] = useState(false);
   const [snapReady, setSnapReady] = useState(false);
@@ -41,7 +44,7 @@ export default function KioskPage() {
     { kind: "idle" | "info" | "ok" | "warn" | "err"; text: string } | undefined
   >({ kind: "info", text: "Scan barcode / tempel link FotoShare, atur jumlah, lalu bayar QRIS." });
 
-  // ✅ success modal state
+  // Success modal state
   const [successOpen, setSuccessOpen] = useState(false);
   const [successInfo, setSuccessInfo] = useState<{
     midtrans_order_id: string;
@@ -49,6 +52,9 @@ export default function KioskPage() {
     email: string | null;
     name: string | null;
   } | null>(null);
+
+  // Keep timeout id so we can clear on manual close
+  const successTimerRef = useRef<number | null>(null);
 
   const scanRef = useRef<HTMLInputElement | null>(null);
 
@@ -60,7 +66,14 @@ export default function KioskPage() {
       : "https://app.sandbox.midtrans.com/snap/snap.js";
 
   function bumpQty(delta: number) {
-    setQty((q) => Math.min(20, Math.max(0, q + delta))); // min 0
+    setQty((q) => Math.min(20, Math.max(0, q + delta)));
+  }
+
+  function clearSuccessTimer() {
+    if (successTimerRef.current) {
+      window.clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
   }
 
   function resetForm() {
@@ -69,6 +82,12 @@ export default function KioskPage() {
     setInput("");
     setQty(0);
     setTimeout(() => scanRef.current?.focus(), 50);
+  }
+
+  function closeSuccessAndReset() {
+    clearSuccessTimer();
+    setSuccessOpen(false);
+    resetForm();
   }
 
   const canPay =
@@ -107,7 +126,7 @@ export default function KioskPage() {
         body: JSON.stringify({
           fotoshare_input: input,
           qty,
-          size, // fixed 4x6
+          size,
           customer_name: name,
           customer_email: email,
         }),
@@ -121,7 +140,7 @@ export default function KioskPage() {
 
       const j = JSON.parse(text) as { snap_token: string; midtrans_order_id: string };
 
-      // store info for modal
+      // info for modal
       setSuccessInfo({
         midtrans_order_id: j.midtrans_order_id ?? "-",
         amount: total,
@@ -133,20 +152,28 @@ export default function KioskPage() {
 
       window.snap.pay(j.snap_token, {
         gopayMode: "qr",
-        onSuccess: () => {
-          // UX only. Valid PAID tetap via webhook.
-          setStatus({ kind: "ok", text: "Pembayaran sukses. Silakan tunggu diproses operator." });
 
-          // show modal
+        // UX: show progress while waiting confirmation
+        onPending: () =>
+          setStatus({ kind: "info", text: "Menunggu konfirmasi pembayaran... (scan QRIS)" }),
+
+        onSuccess: () => {
+          setStatus({
+            kind: "ok",
+            text: "Pembayaran sukses. Silakan cek email dan pickup di kasir.",
+          });
+
           setSuccessOpen(true);
 
-          // reset for next customer
-          resetForm();
-
-          // auto close
-          setTimeout(() => setSuccessOpen(false), 30000);
+          // IMPORTANT: reset AFTER modal closes (feels smoother)
+          clearSuccessTimer();
+          successTimerRef.current = window.setTimeout(() => {
+            setSuccessOpen(false);
+            resetForm();
+            successTimerRef.current = null;
+          }, SUCCESS_MODAL_AUTO_CLOSE_MS);
         },
-        onPending: () => setStatus({ kind: "info", text: "Menunggu pembayaran (scan QRIS)." }),
+
         onError: () => setStatus({ kind: "err", text: "Pembayaran gagal. Coba ulang." }),
         onClose: () => setStatus({ kind: "warn", text: "Popup pembayaran ditutup. Kamu bisa coba lagi." }),
       });
@@ -175,12 +202,12 @@ export default function KioskPage() {
         onError={() => setSnapReady(false)}
       />
 
-      {/* ✅ Success Modal */}
+      {/* Success Modal */}
       {successOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setSuccessOpen(false)}
+            onClick={closeSuccessAndReset}
           />
 
           <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-zinc-950/90 p-6 shadow-2xl animate-[pop_180ms_ease-out]">
@@ -197,7 +224,7 @@ export default function KioskPage() {
               </div>
 
               <button
-                onClick={() => setSuccessOpen(false)}
+                onClick={closeSuccessAndReset}
                 className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
               >
                 Tutup
