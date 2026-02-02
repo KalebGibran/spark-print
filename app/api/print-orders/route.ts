@@ -42,6 +42,7 @@ export async function POST(req: Request) {
     const fotoshare_input = String(body?.fotoshare_input ?? "");
     const qty = Number(body?.qty ?? 1);
     const size = String(body?.size ?? "4x6") as SizeKey;
+    const queue_number = Number(body?.queue_number ?? 0);
 
     const customer_name = String(body?.customer_name ?? "").trim().slice(0, 40);
     const customer_email = String(body?.customer_email ?? "").trim().toLowerCase().slice(0, 120);
@@ -49,6 +50,9 @@ export async function POST(req: Request) {
     if (!fotoshare_input) return NextResponse.json({ error: "fotoshare_input required" }, { status: 400 });
     if (!Number.isFinite(qty) || qty < 1 || qty > 20) {
       return NextResponse.json({ error: "qty must be 1..20" }, { status: 400 });
+    }
+    if (!Number.isFinite(queue_number) || queue_number < 1 || queue_number > 999) {
+      return NextResponse.json({ error: "queue_number must be 1..999" }, { status: 400 });
     }
 
     const allowedSizes = new Set<SizeKey>(["4x6", "strip"]);
@@ -79,6 +83,7 @@ export async function POST(req: Request) {
         status: "PENDING",
         customer_name: customer_name || null,
         customer_email: customer_email || null,
+        queue_number,
         snap_error: null,
       })
       .select("*")
@@ -93,7 +98,14 @@ export async function POST(req: Request) {
     const payload = {
       transaction_details: { order_id: midtrans_order_id, gross_amount: grossAmount },
       enabled_payments: ["gopay"],
-      item_details: [{ id: `print-${size}`, price: unitPrice, quantity: qty, name: `Photo Print ${size}` }],
+      item_details: [
+        {
+          id: `print-${size}`,
+          price: unitPrice,
+          quantity: qty,
+          name: `Photo Print ${size} (No. Urut: ${queue_number})`
+        }
+      ],
       customer_details: {
         first_name: customer_name || "Customer",
         email: customer_email || undefined,

@@ -39,6 +39,7 @@ export default function KioskPage() {
   // Optional identity
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [queueNumber, setQueueNumber] = useState("");
 
   // Fotoshare + order
   const [input, setInput] = useState("");
@@ -61,6 +62,7 @@ export default function KioskPage() {
     amount: number;
     email: string | null;
     name: string | null;
+    queueNumber: number | null;
   } | null>(null);
 
   // Keep timeout id so we can clear on manual close
@@ -92,6 +94,7 @@ export default function KioskPage() {
   function resetForm() {
     setName("");
     setEmail("");
+    setQueueNumber("");
     setInput("");
     setQty(0);
     setSize("4x6");
@@ -259,14 +262,32 @@ export default function KioskPage() {
     resetForm();
   }
 
+  const queueNum = parseInt(queueNumber, 10);
+  const isValidQueueNumber = !isNaN(queueNum) && queueNum >= 1 && queueNum <= 999;
+
   const canPay =
     !loading &&
     snapReady &&
+    name.trim().length > 0 &&
+    email.trim().length > 0 &&
+    isValidEmail(email.trim()) &&
+    isValidQueueNumber &&
     input.trim().length > 0 &&
-    qty >= 1 &&
-    isValidEmail(email.trim());
+    qty >= 1;
 
   async function pay() {
+    if (!name.trim()) {
+      setStatus({ kind: "warn", text: "Nama harus diisi." });
+      return;
+    }
+    if (!email.trim()) {
+      setStatus({ kind: "warn", text: "Email harus diisi." });
+      return;
+    }
+    if (!isValidEmail(email.trim())) {
+      setStatus({ kind: "warn", text: "Format email tidak valid." });
+      return;
+    }
     if (!input.trim()) {
       setStatus({ kind: "warn", text: "Link/token FotoShare masih kosong." });
       scanRef.current?.focus();
@@ -280,8 +301,8 @@ export default function KioskPage() {
       setStatus({ kind: "err", text: "Sistem pembayaran belum siap. Refresh halaman." });
       return;
     }
-    if (!isValidEmail(email.trim())) {
-      setStatus({ kind: "warn", text: "Format email tidak valid." });
+    if (!isValidQueueNumber) {
+      setStatus({ kind: "warn", text: "Nomor urut harus diisi (1-999)." });
       return;
     }
 
@@ -296,6 +317,7 @@ export default function KioskPage() {
           fotoshare_input: input,
           qty,
           size,
+          queue_number: queueNum,
           customer_name: name,
           customer_email: email,
         }),
@@ -323,6 +345,7 @@ export default function KioskPage() {
             amount: total,
             email: email.trim() || null,
             name: name.trim() || null,
+            queueNumber: queueNum,
           });
           setSuccessOpen(true);
 
@@ -361,7 +384,7 @@ export default function KioskPage() {
         ? "border-red-200 bg-red-50 text-red-700"
         : status?.kind === "warn"
           ? "border-amber-200 bg-amber-50 text-amber-700"
-          : "border-blue-200 bg-blue-50 text-blue-700";
+          : "border-pink-200 bg-pink-50 text-pink-700";
 
   return (
     <>
@@ -418,7 +441,14 @@ export default function KioskPage() {
                 </div>
               )}
 
-              <div className="mt-1 rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700">
+              {successInfo?.queueNumber && (
+                <div className="flex items-center justify-between gap-3 bg-pink-100 rounded-lg px-3 py-2 -mx-1">
+                  <span className="text-pink-700 font-medium">🎫 Nomor Urut</span>
+                  <span className="text-pink-700 font-bold text-lg">{successInfo.queueNumber}</span>
+                </div>
+              )}
+
+              <div className="mt-1 rounded-xl bg-pink-50 border border-pink-100 p-3 text-xs text-pink-700">
                 {successInfo?.email ? (
                   <>
                     📧 Receipt dikirim ke: <span className="font-semibold">{successInfo.email}</span>
@@ -459,7 +489,7 @@ export default function KioskPage() {
         }}
       />
 
-      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-pink-50">
         <div className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
           {/* Header */}
           <div className="text-center">
@@ -475,15 +505,15 @@ export default function KioskPage() {
                 }}
               />
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-sm font-medium text-blue-700">
-              <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-50 px-4 py-1.5 text-sm font-medium text-pink-700">
+              <span className="h-2 w-2 rounded-full bg-[#ff4b86] animate-pulse" />
               Print Your Photo.
             </div>
             <h1 className="mt-4 text-3xl font-bold text-gray-900 sm:text-4xl">
               Spark Stage Print
             </h1>
             <p className="mt-2 text-gray-600">
-              Cetak foto langsung dari FotoShare! Scan QR → Bayar → Ambil foto.
+              Scan QR → Bayar → Ambil foto.
             </p>
           </div>
 
@@ -506,30 +536,52 @@ export default function KioskPage() {
               {/* Name */}
               <div className="mt-6">
                 <label className="block text-sm font-medium text-gray-700">
-                  Nama <span className="text-gray-400 font-normal">(opsional)</span>
+                  Nama <span className="text-red-500 font-normal">*</span>
                 </label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Contoh: Rani / Budi"
-                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none transition-all"
+                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-[#ff4b86] focus:ring-2 focus:ring-pink-500/20 focus:bg-white outline-none transition-all"
                 />
               </div>
 
               {/* Email */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700">
-                  Email <span className="text-gray-400 font-normal">(untuk receipt digital)</span>
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Contoh: rani@gmail.com"
-                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none transition-all"
+                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-[#ff4b86] focus:ring-2 focus:ring-pink-500/20 focus:bg-white outline-none transition-all"
                 />
                 {!isValidEmail(email.trim()) && email.trim() && (
                   <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
                     <span>⚠️</span> Format email tidak valid.
+                  </div>
+                )}
+              </div>
+
+              {/* Queue Number */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700">
+                  Nomor Urut <span className="text-red-500 font-normal">*</span>
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
+                  value={queueNumber}
+                  onChange={(e) => setQueueNumber(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  placeholder="Masukkan nomor urut Anda (1-100)"
+                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-[#ff4b86] focus:ring-2 focus:ring-pink-500/20 focus:bg-white outline-none transition-all"
+                />
+                {queueNumber && !isValidQueueNumber && (
+                  <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                    <span>⚠️</span> Nomor urut harus antara 1-999
                   </div>
                 )}
               </div>
@@ -573,7 +625,7 @@ export default function KioskPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder="https://fotoshare.co/i/xxxxx atau token xxxxx"
-                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none transition-all font-mono text-sm"
+                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-[#ff4b86] focus:ring-2 focus:ring-pink-500/20 focus:bg-white outline-none transition-all font-mono text-sm"
                 />
               </div>
 
@@ -588,7 +640,7 @@ export default function KioskPage() {
                         className={[
                           "flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all",
                           size === opt.key
-                            ? "border-blue-500 bg-blue-50 shadow-sm"
+                            ? "border-[#ff4b86] bg-pink-50 shadow-sm"
                             : "border-gray-200 bg-white hover:border-gray-300",
                         ].join(" ")}
                       >
@@ -598,7 +650,7 @@ export default function KioskPage() {
                           value={opt.key}
                           checked={size === opt.key}
                           onChange={() => setSize(opt.key)}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                          className="h-4 w-4 text-[#ff4b86] accent-[#ff4b86]"
                         />
                         <div className="flex-1">
                           <div className="text-sm font-semibold text-gray-900">{opt.label}</div>
@@ -661,13 +713,13 @@ export default function KioskPage() {
                   disabled={!canPay}
                   className={[
                     "w-full sm:w-auto rounded-xl px-8 py-4 text-base font-bold transition-all shadow-lg",
-                    "bg-gradient-to-r from-blue-600 to-indigo-600 text-white",
-                    "hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl hover:shadow-blue-500/25",
+                    "bg-[#ff4b86] text-white",
+                    "hover:bg-[#e63d75] hover:shadow-xl hover:shadow-pink-500/25",
                     "active:scale-[0.98]",
                     "disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none",
                   ].join(" ")}
                 >
-                  {loading ? "⏳ Memproses..." : `💰 Bayar Rp${formatIDR(total)}`}
+                  {loading ? "⏳ Memproses..." : `Bayar Rp${formatIDR(total)}`}
                 </button>
               </div>
             </div>
@@ -686,23 +738,23 @@ export default function KioskPage() {
             </div>
 
             {/* Help Section */}
-            <div className="mt-6 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-6">
+            <div className="mt-6 rounded-2xl bg-gradient-to-r from-pink-50 to-rose-50 border border-pink-100 p-6">
               <h3 className="text-lg font-bold text-gray-900">❓ Cara Cetak Foto</h3>
               <ol className="mt-4 space-y-3">
                 <li className="flex items-start gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shrink-0">1</span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff4b86] text-xs font-bold text-white shrink-0">1</span>
                   <div className="text-sm text-gray-700">
                     <span className="font-medium">Scan atau Upload QR</span> — Gunakan tombol "Scan" untuk menggunakan kamera, atau "Upload" untuk memilih gambar QR dari galeri.
                   </div>
                 </li>
                 <li className="flex items-start gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shrink-0">2</span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff4b86] text-xs font-bold text-white shrink-0">2</span>
                   <div className="text-sm text-gray-700">
                     <span className="font-medium">Pilih ukuran & jumlah</span> — Tentukan ukuran cetak dan berapa banyak yang ingin dicetak.
                   </div>
                 </li>
                 <li className="flex items-start gap-3">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shrink-0">3</span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ff4b86] text-xs font-bold text-white shrink-0">3</span>
                   <div className="text-sm text-gray-700">
                     <span className="font-medium">Bayar dengan QRIS</span> — Klik tombol bayar dan scan QRIS menggunakan e-wallet atau mobile banking.
                   </div>

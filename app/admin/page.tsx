@@ -6,6 +6,7 @@ type OrderStatus = "PENDING" | "PAID" | "PRINTED" | "FAILED" | string;
 
 type Order = {
   id: string;
+  queue_number: number | null;
   customer_name: string | null;
   customer_email: string | null;
   fotoshare_token: string;
@@ -271,6 +272,7 @@ export default function AdminPage() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">No. Urut</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Paid at</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Token</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Customer</th>
@@ -285,6 +287,11 @@ export default function AdminPage() {
               <tbody className="divide-y divide-gray-100">
                 {orders.map((o) => (
                   <tr key={o.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-pink-100 text-pink-700 font-bold text-sm">
+                        {o.queue_number ?? "-"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                       {o.paid_at ? (
                         <span className="font-mono text-xs">{o.paid_at}</span>
