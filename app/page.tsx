@@ -110,16 +110,16 @@ export default function KioskPage() {
       return;
     }
 
-    // Validate max 1MB
-    const MAX_SIZE = 1 * 1024 * 1024; // 1MB
-    if (file.size > MAX_SIZE) {
-      setStatus({ kind: "warn", text: "Ukuran file maksimal 1MB." });
-      e.target.value = "";
-      return;
-    }
-
     setDecoding(true);
-    setStatus({ kind: "info", text: "Membaca QR code..." });
+
+    const MAX_SIZE = 1 * 1024 * 1024; // 1MB
+    const needsCompression = file.size > MAX_SIZE;
+
+    if (needsCompression) {
+      setStatus({ kind: "info", text: "Mengompres gambar..." });
+    } else {
+      setStatus({ kind: "info", text: "Membaca QR code..." });
+    }
 
     try {
       // Create image element from file
@@ -132,18 +132,53 @@ export default function KioskPage() {
         img.src = objectUrl;
       });
 
-      // Decode QR using ZXing
-      const reader = new BrowserQRCodeReader();
-      const result = await reader.decodeFromImageElement(img);
+      let imageToScan: HTMLImageElement | HTMLCanvasElement = img;
+
+      // Compress if needed
+      if (needsCompression) {
+        setStatus({ kind: "info", text: "Membaca QR code..." });
+
+        // Calculate new dimensions (max 1500px on longest side for QR reading)
+        const maxDim = 1500;
+        let { width, height } = img;
+
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+
+        // Draw to canvas with reduced size
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          imageToScan = canvas;
+        }
+      }
 
       // Clean up object URL
       URL.revokeObjectURL(objectUrl);
+
+      // Decode QR using ZXing
+      const reader = new BrowserQRCodeReader();
+      const result = imageToScan instanceof HTMLCanvasElement
+        ? await reader.decodeFromCanvas(imageToScan)
+        : await reader.decodeFromImageElement(imageToScan);
 
       const text = result.getText();
       if (text) {
         setInput(text);
         setQty((q) => (q < 1 ? 1 : q));
-        setStatus({ kind: "ok", text: "QR code berhasil dibaca!" });
+        setStatus({
+          kind: "ok", text: needsCompression
+            ? "QR code berhasil dibaca! (gambar dikompres)"
+            : "QR code berhasil dibaca!"
+        });
         setTimeout(() => scanRef.current?.focus(), 50);
       } else {
         setStatus({ kind: "warn", text: "QR code tidak ditemukan dalam gambar." });
@@ -446,7 +481,7 @@ export default function KioskPage() {
                       <input
                         ref={qrFileRef}
                         type="file"
-                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        accept="image/png,image/jpeg,image/jpg,image/webp,image/heic,image/heif,.heic,.heif"
                         onChange={handleQRUpload}
                         className="hidden"
                       />
@@ -580,7 +615,7 @@ export default function KioskPage() {
                     <span className="font-semibold text-zinc-200">Scan Camera:</span> Gunakan kamera untuk scan QR secara langsung.
                   </li>
                   <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
-                    <span className="font-semibold text-zinc-200">Upload QR:</span> Upload gambar QR (max 1MB) untuk decode otomatis.
+                    <span className="font-semibold text-zinc-200">Upload QR:</span> Upload gambar QR untuk decode otomatis (auto-compress jika besar).
                   </li>
                   <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
                     Batasi input hanya domain fotoshare (sudah divalidasi server).
