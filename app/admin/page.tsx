@@ -25,15 +25,15 @@ function formatIDR(n: number) {
 function badgeClasses(status: string) {
   switch (status) {
     case "PAID":
-      return "bg-sky-500/20 text-sky-200 border border-sky-500/30";
+      return "bg-blue-100 text-blue-700 border border-blue-200";
     case "PRINTED":
-      return "bg-emerald-500/20 text-emerald-200 border border-emerald-500/30";
+      return "bg-emerald-100 text-emerald-700 border border-emerald-200";
     case "PENDING":
-      return "bg-amber-500/20 text-amber-100 border border-amber-500/30";
+      return "bg-amber-100 text-amber-700 border border-amber-200";
     case "FAILED":
-      return "bg-red-500/20 text-red-200 border border-red-500/30";
+      return "bg-red-100 text-red-700 border border-red-200";
     default:
-      return "bg-white/10 text-zinc-200 border border-white/10";
+      return "bg-gray-100 text-gray-600 border border-gray-200";
   }
 }
 
@@ -110,207 +110,260 @@ export default function AdminPage() {
   }, [autoRefresh, password, status, needsPrint, sizeFilter, q, sortField, sortDir]);
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold">Admin Queue</h1>
-            <p className="mt-1 text-sm text-zinc-400">Semua order + filter status + search + sort</p>
+            <h1 className="text-2xl font-bold text-gray-900 sm:text-3xl">
+              🖨️ Print Queue
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Kelola antrian print foto • Auto-refresh setiap 5 detik
+            </p>
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-zinc-300">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Auto refresh (5s)
-          </label>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span>Auto refresh</span>
+              {autoRefresh && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                  Live
+                </span>
+              )}
+            </label>
+          </div>
         </div>
 
         {/* Password + Refresh */}
-        <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
-          <div>
-            <div className="text-xs text-zinc-400">Operator password</div>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none"
-              placeholder="••••••••"
-              type="password"
-            />
-          </div>
+        <div className="mt-6 rounded-xl bg-white p-4 shadow-sm border border-gray-200">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Password Operator
+              </label>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-1.5 w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white transition-all outline-none"
+                placeholder="••••••••"
+                type="password"
+              />
+            </div>
 
-          <button
-            onClick={load}
-            className="h-[46px] self-end rounded-xl bg-white px-5 py-3 font-semibold text-zinc-950"
-          >
-            Refresh
-          </button>
+            <button
+              onClick={load}
+              className="rounded-lg bg-blue-600 px-6 py-2.5 font-semibold text-white shadow-sm hover:bg-blue-700 active:scale-[0.98] transition-all"
+            >
+              🔄 Refresh
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
-        <div className="mt-4 grid gap-3 lg:grid-cols-4">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-zinc-400">Filter status</div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {/* Filter Status */}
+          <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-200">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Filter Status
+            </label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as any)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950/40 px-3 py-3 outline-none"
+              className="mt-1.5 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2.5 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
               disabled={needsPrint}
-              title={needsPrint ? "Disable karena 'Butuh print saja' aktif" : ""}
             >
-              <option value="ALL">ALL</option>
-              <option value="PENDING">PENDING</option>
-              <option value="PAID">PAID</option>
-              <option value="PRINTED">PRINTED</option>
-              <option value="FAILED">FAILED</option>
+              <option value="ALL">Semua Status</option>
+              <option value="PENDING">🕐 PENDING</option>
+              <option value="PAID">💰 PAID</option>
+              <option value="PRINTED">✅ PRINTED</option>
+              <option value="FAILED">❌ FAILED</option>
             </select>
 
-            <label className="mt-3 flex items-center gap-2 text-sm text-zinc-200">
+            <label className="mt-3 flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
               <input
                 type="checkbox"
                 checked={needsPrint}
                 onChange={(e) => setNeedsPrint(e.target.checked)}
-                className="h-4 w-4"
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              Butuh print saja (PAID)
+              <span>Butuh print saja</span>
             </label>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-zinc-400">Search</div>
+          {/* Search */}
+          <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-200">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Cari
+            </label>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="token / nama / email / order id"
-              className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950/40 px-3 py-3 outline-none"
+              placeholder="Token / nama / email..."
+              className="mt-1.5 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2.5 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
             />
-            <div className="mt-2 text-xs text-zinc-400">Tip: tekan Refresh kalau auto-refresh off.</div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-zinc-400">Filter ukuran</div>
+          {/* Filter Ukuran */}
+          <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-200">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Filter Ukuran
+            </label>
             <select
               value={sizeFilter}
               onChange={(e) => setSizeFilter(e.target.value as any)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950/40 px-3 py-3 outline-none"
+              className="mt-1.5 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2.5 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
             >
               <option value="ALL">Semua Ukuran</option>
-              <option value="4x6">4×6 saja</option>
-              <option value="strip">2×6 (strip) saja</option>
+              <option value="4x6">📷 4×6</option>
+              <option value="strip">📸 2×6 Strip</option>
             </select>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-zinc-400">Sort field</div>
-            <select
-              value={sortField}
-              onChange={(e) => setSortField(e.target.value as any)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950/40 px-3 py-3 outline-none"
-            >
-              <option value="paid_at">paid_at</option>
-              <option value="created_at">created_at</option>
-            </select>
-          </div>
-
-          {/* <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-zinc-400">Sort direction</div>
+          {/* Sort */}
+          <div className="rounded-xl bg-white p-4 shadow-sm border border-gray-200">
+            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Urutkan
+            </label>
             <select
               value={sortDir}
-              onChange={(e) => setSortDir(e.target.value as any)}
-              className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950/40 px-3 py-3 outline-none"
+              onChange={(e) => setSortDir(e.target.value as "desc" | "asc")}
+              className="mt-1.5 w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2.5 text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all"
             >
-              <option value="desc">desc (newest first)</option>
-              <option value="asc">asc (oldest first)</option>
+              <option value="desc">⬇️ Terbaru</option>
+              <option value="asc">⬆️ Terlama</option>
             </select>
-          </div> */}
+          </div>
         </div>
 
+        {/* Message */}
         {msg && (
-          <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-amber-100">
-            {msg}
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-sm flex items-center gap-2">
+            <span>⚠️</span>
+            <span>{msg}</span>
           </div>
         )}
 
-        <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
-          <table className="w-full text-sm">
-            <thead className="bg-white/5 text-zinc-300">
-              <tr>
-                <th className="px-4 py-3 text-left">Paid at</th>
-                <th className="px-4 py-3 text-left">Created</th>
-                <th className="px-4 py-3 text-left">Token</th>
-                <th className="px-4 py-3 text-left">Name</th>
-                <th className="px-4 py-3 text-left">Email</th>
-                <th className="px-4 py-3 text-left">Size</th>
-                <th className="px-4 py-3 text-left">Qty</th>
-                <th className="px-4 py-3 text-left">Total</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id} className="border-t border-white/10">
-                  <td className="px-4 py-3">{o.paid_at ?? "-"}</td>
-                  <td className="px-4 py-3">{o.created_at}</td>
-                  <td className="px-4 py-3 font-mono">{o.fotoshare_token}</td>
-                  <td className="px-4 py-3">{o.customer_name || "-"}</td>
-                  <td className="px-4 py-3">{o.customer_email || "-"}</td>
-                  <td className="px-4 py-3">{o.size}</td>
-                  <td className="px-4 py-3">{o.qty}</td>
-                  <td className="px-4 py-3">Rp{formatIDR(o.amount)}</td>
-
-                  <td className="px-4 py-3">
-                    <span className={["rounded-full px-2 py-1 text-xs font-semibold", badgeClasses(o.status)].join(" ")}>
-                      {o.status}
-                    </span>
-                  </td>
-
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <a
-                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 hover:bg-white/10"
-                        href={`https://fotoshare.co/i/${o.fotoshare_token}`}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Open FotoShare
-                      </a>
-
-                      <button
-                        onClick={() => markPrinted(o.id)}
-                        disabled={o.status !== "PAID"}
-                        className={[
-                          "rounded-lg px-3 py-2 font-semibold",
-                          o.status !== "PAID"
-                            ? "bg-white/10 text-zinc-400 cursor-not-allowed"
-                            : "bg-emerald-400/90 text-zinc-950 hover:bg-emerald-400",
-                        ].join(" ")}
-                        title={o.status !== "PAID" ? "Hanya bisa Mark Printed jika status PAID" : ""}
-                      >
-                        {o.status === "PRINTED" ? "Printed" : "Mark Printed"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-
-              {orders.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-zinc-400" colSpan={10}>
-                    Tidak ada data untuk filter ini.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {/* Stats */}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm border border-gray-200 shadow-sm">
+            <span className="text-gray-500">Total:</span>
+            <span className="font-semibold text-gray-900">{orders.length}</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-sm border border-blue-200">
+            <span className="text-blue-600">Perlu Print:</span>
+            <span className="font-semibold text-blue-700">
+              {orders.filter(o => o.status === "PAID").length}
+            </span>
+          </div>
         </div>
 
-        <div className="mt-4 text-xs text-zinc-500">
-          Catatan: “Butuh print saja” = hanya status PAID. PRINTED sudah selesai. PENDING = belum bayar. FAILED = gagal/expired.
+        {/* Table */}
+        <div className="mt-4 overflow-hidden rounded-xl bg-white shadow-sm border border-gray-200">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Paid at</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Token</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Customer</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Size</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Qty</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Total</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Actions</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-gray-100">
+                {orders.map((o) => (
+                  <tr key={o.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {o.paid_at ? (
+                        <span className="font-mono text-xs">{o.paid_at}</span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <code className="rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-700">
+                        {o.fotoshare_token}
+                      </code>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{o.customer_name || "-"}</div>
+                      <div className="text-xs text-gray-500">{o.customer_email || "-"}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                        {o.size === "strip" ? "2×6" : o.size}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">{o.qty}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">Rp{formatIDR(o.amount)}</td>
+
+                    <td className="px-4 py-3">
+                      <span className={["inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold", badgeClasses(o.status)].join(" ")}>
+                        {o.status}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          className="inline-flex items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                          href={`https://fotoshare.co/i/${o.fotoshare_token}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          🔗 Open
+                        </a>
+
+                        <button
+                          onClick={() => markPrinted(o.id)}
+                          disabled={o.status !== "PAID"}
+                          className={[
+                            "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
+                            o.status !== "PAID"
+                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                              : "bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm",
+                          ].join(" ")}
+                        >
+                          {o.status === "PRINTED" ? "✅ Done" : "🖨️ Print"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+                {orders.length === 0 && (
+                  <tr>
+                    <td className="px-4 py-12 text-center text-gray-400" colSpan={8}>
+                      <div className="text-4xl mb-2">📭</div>
+                      <div>Tidak ada data untuk filter ini.</div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Footer Note */}
+        <div className="mt-4 rounded-xl bg-blue-50 border border-blue-100 p-4">
+          <div className="flex items-start gap-2 text-sm text-blue-700">
+            <span>💡</span>
+            <div>
+              <span className="font-medium">Tips:</span> Gunakan filter "Butuh print saja" untuk fokus pada order yang perlu diprint (status PAID).
+            </div>
+          </div>
         </div>
       </div>
     </main>

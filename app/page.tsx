@@ -50,7 +50,7 @@ export default function KioskPage() {
 
   const [status, setStatus] = useState<
     { kind: "idle" | "info" | "ok" | "warn" | "err"; text: string } | undefined
-  >({ kind: "info", text: "Scan barcode / tempel link FotoShare, atur jumlah, lalu bayar QRIS." });
+  >({ kind: "info", text: "Scan QR code foto Anda, pilih jumlah cetak, lalu bayar dengan QRIS." });
 
   const [scanOpen, setScanOpen] = useState(false);
 
@@ -277,7 +277,7 @@ export default function KioskPage() {
       return;
     }
     if (!window.snap) {
-      setStatus({ kind: "err", text: "Snap.js belum ter-load. Refresh halaman." });
+      setStatus({ kind: "err", text: "Sistem pembayaran belum siap. Refresh halaman." });
       return;
     }
     if (!isValidEmail(email.trim())) {
@@ -286,7 +286,7 @@ export default function KioskPage() {
     }
 
     setLoading(true);
-    setStatus({ kind: "info", text: "Membuat order..." });
+    setStatus({ kind: "info", text: "Membuat pesanan..." });
 
     try {
       const r = await fetch("/api/print-orders", {
@@ -301,52 +301,53 @@ export default function KioskPage() {
         }),
       });
 
-      const text = await r.text();
+      const j = await r.json().catch(() => ({}));
+
       if (!r.ok) {
-        setStatus({ kind: "err", text: `Gagal membuat order.\n${text}` });
-        return;
+        throw new Error(j?.error ?? `Server error ${r.status}`);
       }
 
-      const j = JSON.parse(text) as { snap_token: string; midtrans_order_id: string };
+      const { snap_token, midtrans_order_id, order_id } = j as {
+        snap_token: string;
+        midtrans_order_id: string;
+        order_id: string;
+      };
 
-      // info for modal
-      setSuccessInfo({
-        midtrans_order_id: j.midtrans_order_id ?? "-",
-        amount: total,
-        email: email.trim() ? email.trim() : null,
-        name: name.trim() ? name.trim() : null,
-      });
+      setStatus({ kind: "info", text: "Membuka halaman pembayaran..." });
 
-      setStatus({ kind: "info", text: "Menampilkan QRIS..." });
-
-      window.snap.pay(j.snap_token, {
-        gopayMode: "qr",
-
-        // UX: show progress while waiting confirmation
-        onPending: () =>
-          setStatus({ kind: "info", text: "Menunggu konfirmasi pembayaran... (scan QRIS)" }),
-
-        onSuccess: () => {
-          setStatus({
-            kind: "ok",
-            text: "Pembayaran sukses. Silakan cek email dan pickup di kasir.",
+      window.snap.pay(snap_token, {
+        onSuccess(result: any) {
+          console.log("Payment success:", result);
+          setSuccessInfo({
+            midtrans_order_id,
+            amount: total,
+            email: email.trim() || null,
+            name: name.trim() || null,
           });
-
           setSuccessOpen(true);
 
-          // IMPORTANT: reset AFTER modal closes (feels smoother)
           clearSuccessTimer();
           successTimerRef.current = window.setTimeout(() => {
-            setSuccessOpen(false);
-            resetForm();
-            successTimerRef.current = null;
+            closeSuccessAndReset();
           }, SUCCESS_MODAL_AUTO_CLOSE_MS);
         },
-
-        onError: () => setStatus({ kind: "err", text: "Pembayaran gagal. Coba ulang." }),
-        onClose: () => setStatus({ kind: "warn", text: "Popup pembayaran ditutup. Kamu bisa coba lagi." }),
+        onPending(result: any) {
+          console.log("Payment pending:", result);
+          setStatus({
+            kind: "warn",
+            text: `Pembayaran pending. Order ID: ${midtrans_order_id}. Selesaikan pembayaran atau tunggu konfirmasi.`,
+          });
+        },
+        onError(result: any) {
+          console.log("Payment error:", result);
+          setStatus({ kind: "err", text: "Pembayaran gagal. Silakan coba lagi." });
+        },
+        onClose() {
+          setStatus({ kind: "warn", text: "Popup pembayaran ditutup. Klik bayar untuk mencoba lagi." });
+        },
       });
     } catch (e: any) {
+      console.error("Pay error:", e);
       setStatus({ kind: "err", text: e?.message ?? "Error" });
     } finally {
       setLoading(false);
@@ -355,12 +356,12 @@ export default function KioskPage() {
 
   const statusClasses =
     status?.kind === "ok"
-      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
       : status?.kind === "err"
-        ? "border-red-500/30 bg-red-500/10 text-red-200"
+        ? "border-red-200 bg-red-50 text-red-700"
         : status?.kind === "warn"
-          ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
-          : "border-sky-500/30 bg-sky-500/10 text-sky-100";
+          ? "border-amber-200 bg-amber-50 text-amber-700"
+          : "border-blue-200 bg-blue-50 text-blue-700";
 
   return (
     <>
@@ -375,60 +376,58 @@ export default function KioskPage() {
       {successOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             onClick={closeSuccessAndReset}
           />
 
-          <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-zinc-950/90 p-6 shadow-2xl animate-[pop_180ms_ease-out]">
+          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl animate-[pop_180ms_ease-out]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  Payment Success
+                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  Pembayaran Berhasil
                 </div>
-                <h3 className="mt-3 text-xl font-semibold">Pembayaran berhasil</h3>
-                <p className="mt-1 text-sm text-zinc-300">
-                  Silakan pickup di kasir dengan menunjukkan receipt/bukti bayar.
+                <h3 className="mt-3 text-xl font-bold text-gray-900">Terima kasih! 🎉</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Foto Anda sedang diproses. Tunggu panggilan untuk pengambilan.
                 </p>
               </div>
 
               <button
                 onClick={closeSuccessAndReset}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 hover:bg-white/10"
+                className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 Tutup
               </button>
             </div>
 
-            <div className="mt-5 grid gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
+            <div className="mt-5 grid gap-3 rounded-2xl bg-gray-50 border border-gray-200 p-4 text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-400">Order ID</span>
-                <span className="font-mono text-zinc-100">{successInfo?.midtrans_order_id ?? "-"}</span>
+                <span className="text-gray-500">Order ID</span>
+                <span className="font-mono text-gray-900 font-medium">{successInfo?.midtrans_order_id ?? "-"}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-zinc-400">Total</span>
-                <span className="text-zinc-100">Rp{formatIDR(successInfo?.amount ?? 0)}</span>
+                <span className="text-gray-500">Total</span>
+                <span className="text-gray-900 font-semibold">Rp{formatIDR(successInfo?.amount ?? 0)}</span>
               </div>
 
               {successInfo?.name && (
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-zinc-400">Nama</span>
-                  <span className="text-zinc-100">{successInfo.name}</span>
+                  <span className="text-gray-500">Nama</span>
+                  <span className="text-gray-900">{successInfo.name}</span>
                 </div>
               )}
 
-              <div className="mt-1 rounded-xl border border-white/10 bg-zinc-950/40 p-3 text-xs text-zinc-300">
+              <div className="mt-1 rounded-xl bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700">
                 {successInfo?.email ? (
                   <>
-                    Receipt dikirim ke: <span className="font-semibold">{successInfo.email}</span>
+                    📧 Receipt dikirim ke: <span className="font-semibold">{successInfo.email}</span>
                     <br />
-                    Jika email belum masuk, tunggu 1–2 menit lalu cek Spam/Promotions.
+                    Cek folder Inbox atau Spam jika belum menerima.
                   </>
                 ) : (
                   <>
-                    Kamu belum mengisi email. Untuk receipt email, isi email pada transaksi berikutnya.
-                    <br />
-                    Untuk pickup, tunjukkan <span className="font-semibold">Order ID</span> di atas ke kasir.
+                    💡 Simpan <span className="font-semibold">Order ID</span> di atas sebagai bukti pesanan.
                   </>
                 )}
               </div>
@@ -460,229 +459,262 @@ export default function KioskPage() {
         }}
       />
 
-      <main className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 text-zinc-100">
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
+        <div className="mx-auto max-w-5xl px-4 py-6 sm:py-10">
           {/* Header */}
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-300">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                Kiosk Mode
-              </div>
-              <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
-                Spark Stage Print
-              </h1>
-              <p className="mt-1 text-sm text-zinc-400">Scan QR → bayar → operator print.</p>
+          <div className="text-center">
+            {/* Logo - ganti src dengan logo asli */}
+            <div className="flex justify-center mb-4">
+              <img
+                src="/logo.png"
+                alt="Spark Stage Print Logo"
+                className="h-16 w-auto object-contain"
+                onError={(e) => {
+                  // Fallback jika logo belum ada
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
             </div>
-
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-              <div className="text-xs text-zinc-400">Total</div>
-              <div className="text-2xl font-semibold">Rp{formatIDR(total)}</div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-1.5 text-sm font-medium text-blue-700">
+              <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+              Print Your Photo.
             </div>
+            <h1 className="mt-4 text-3xl font-bold text-gray-900 sm:text-4xl">
+              Spark Stage Print
+            </h1>
+            <p className="mt-2 text-gray-600">
+              Cetak foto langsung dari FotoShare! Scan QR → Bayar → Ambil foto.
+            </p>
           </div>
 
-          {/* Layout */}
-          <div className="mt-6 grid gap-4 lg:grid-cols-5">
-            {/* Left */}
-            <section className="lg:col-span-3">
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
-                <h2 className="text-lg font-semibold">Input</h2>
-                <p className="mt-1 text-sm text-zinc-400">
-                  Silahkan Upload/Scan QR foto yang anda ingin cetak.
-                </p>
+          {/* Total Card
+          <div className="mt-6 flex justify-center">
+            <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 text-center shadow-lg shadow-blue-500/20">
+              <div className="text-sm text-blue-100">Total Pembayaran</div>
+              <div className="text-3xl font-bold text-white">Rp{formatIDR(total)}</div>
+            </div>
+          </div> */}
 
-                {/* Name */}
-                <div className="mt-4">
-                  <label className="text-xs text-zinc-400">Nama</label>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="contoh: Rani / Budi"
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-zinc-950/40 px-4 py-4 text-base outline-none placeholder:text-zinc-600 focus:border-white/20"
-                  />
+          {/* Main Form */}
+          <div className="mt-8">
+            <div className="rounded-3xl bg-white p-6 shadow-xl shadow-gray-200/50 border border-gray-100 sm:p-8">
+              <h2 className="text-xl font-bold text-gray-900">📝 Isi Data Pesanan</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Scan atau upload QR code dari FotoShare untuk mencetak foto Anda.
+              </p>
+
+              {/* Name */}
+              <div className="mt-6">
+                <label className="block text-sm font-medium text-gray-700">
+                  Nama <span className="text-gray-400 font-normal">(opsional)</span>
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Contoh: Rani / Budi"
+                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none transition-all"
+                />
+              </div>
+
+              {/* Email */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700">
+                  Email <span className="text-gray-400 font-normal">(untuk receipt digital)</span>
+                </label>
+                <input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Contoh: rani@gmail.com"
+                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none transition-all"
+                />
+                {!isValidEmail(email.trim()) && email.trim() && (
+                  <div className="mt-2 text-xs text-red-600 flex items-center gap-1">
+                    <span>⚠️</span> Format email tidak valid.
+                  </div>
+                )}
+              </div>
+
+              {/* Fotoshare */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between gap-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Link FotoShare <span className="text-red-500">*</span>
+                  </label>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setScanOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+                    >
+                      📷 Scan
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => qrFileRef.current?.click()}
+                      disabled={decoding}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      {decoding ? "⏳ Membaca..." : "📁 Upload"}
+                    </button>
+                    <input
+                      ref={qrFileRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp,image/heic,image/heif,.heic,.heif"
+                      onChange={handleQRUpload}
+                      className="hidden"
+                    />
+                  </div>
                 </div>
 
-                {/* Email */}
-                <div className="mt-4">
-                  <label className="text-xs text-zinc-400">Email (untuk receipt dikirim melalui email)</label>
-                  <input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="contoh: rani@gmail.com"
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-zinc-950/40 px-4 py-4 text-base outline-none placeholder:text-zinc-600 focus:border-white/20"
-                  />
-                  {!isValidEmail(email.trim()) && email.trim() && (
-                    <div className="mt-2 text-xs text-amber-200">Format email tidak valid.</div>
+                <input
+                  ref={scanRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="https://fotoshare.co/i/xxxxx atau token xxxxx"
+                  className="mt-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white outline-none transition-all font-mono text-sm"
+                />
+              </div>
+
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {/* Size selection */}
+                <div className="rounded-2xl bg-gray-50 border border-gray-200 p-4">
+                  <div className="text-sm font-medium text-gray-700">📐 Pilih Ukuran</div>
+                  <div className="mt-3 space-y-2">
+                    {SIZE_OPTIONS.map((opt) => (
+                      <label
+                        key={opt.key}
+                        className={[
+                          "flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 transition-all",
+                          size === opt.key
+                            ? "border-blue-500 bg-blue-50 shadow-sm"
+                            : "border-gray-200 bg-white hover:border-gray-300",
+                        ].join(" ")}
+                      >
+                        <input
+                          type="radio"
+                          name="size"
+                          value={opt.key}
+                          checked={size === opt.key}
+                          onChange={() => setSize(opt.key)}
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="flex-1">
+                          <div className="text-sm font-semibold text-gray-900">{opt.label}</div>
+                          <div className="text-xs text-gray-500">{opt.desc}</div>
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900">
+                          Rp{formatIDR(opt.price)}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Qty */}
+                <div className="rounded-2xl bg-gray-50 border border-gray-200 p-4">
+                  <div className="text-sm font-medium text-gray-700">🔢 Jumlah Cetak</div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => bumpQty(-1)}
+                      className="h-14 w-14 rounded-xl border-2 border-gray-300 bg-white text-2xl font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 active:scale-95 transition-all shadow-sm"
+                      aria-label="Kurangi jumlah"
+                    >
+                      −
+                    </button>
+
+                    <div className="min-w-[100px] text-center">
+                      <div className="text-4xl font-bold text-gray-900">{qty}</div>
+                      <div className="text-xs text-gray-500">maksimal 20</div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => bumpQty(1)}
+                      className="h-14 w-14 rounded-xl border-2 border-gray-300 bg-white text-2xl font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 active:scale-95 transition-all shadow-sm"
+                      aria-label="Tambah jumlah"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment */}
+              <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-gray-600 flex items-center gap-2">
+                  <span>💳 Metode bayar:</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                    QRIS
+                  </span>
+                  {!snapReady && (
+                    <span className="text-xs text-gray-400 animate-pulse">
+                      (memuat pembayaran...)
+                    </span>
                   )}
                 </div>
 
-                {/* Fotoshare */}
-                <div className="mt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <label className="text-xs text-zinc-400">FotoShare link / token</label>
+                <button
+                  onClick={pay}
+                  disabled={!canPay}
+                  className={[
+                    "w-full sm:w-auto rounded-xl px-8 py-4 text-base font-bold transition-all shadow-lg",
+                    "bg-gradient-to-r from-blue-600 to-indigo-600 text-white",
+                    "hover:from-blue-700 hover:to-indigo-700 hover:shadow-xl hover:shadow-blue-500/25",
+                    "active:scale-[0.98]",
+                    "disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none",
+                  ].join(" ")}
+                >
+                  {loading ? "⏳ Memproses..." : `💰 Bayar Rp${formatIDR(total)}`}
+                </button>
+              </div>
+            </div>
 
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setScanOpen(true)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
-                      >
-                        Scan Camera
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => qrFileRef.current?.click()}
-                        disabled={decoding}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
-                      >
-                        {decoding ? "Membaca..." : "Upload QR"}
-                      </button>
-                      <input
-                        ref={qrFileRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/jpg,image/webp,image/heic,image/heif,.heic,.heif"
-                        onChange={handleQRUpload}
-                        className="hidden"
-                      />
-                    </div>
-                  </div>
-
-                  <input
-                    ref={scanRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder="https://fotoshare.co/i/xxxxx atau xxxxx"
-                    className="mt-2 w-full rounded-2xl border border-white/10 bg-zinc-950/40 px-4 py-4 text-base outline-none placeholder:text-zinc-600 focus:border-white/20"
-                  />
-                </div>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {/* Size selection */}
-                  <div className="rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
-                    <div className="text-xs text-zinc-400">Pilih Ukuran</div>
-                    <div className="mt-3 space-y-2">
-                      {SIZE_OPTIONS.map((opt) => (
-                        <label
-                          key={opt.key}
-                          className={[
-                            "flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition",
-                            size === opt.key
-                              ? "border-emerald-500/50 bg-emerald-500/10"
-                              : "border-white/10 bg-white/5 hover:bg-white/10",
-                          ].join(" ")}
-                        >
-                          <input
-                            type="radio"
-                            name="size"
-                            value={opt.key}
-                            checked={size === opt.key}
-                            onChange={() => setSize(opt.key)}
-                            className="h-4 w-4 accent-emerald-400"
-                          />
-                          <div className="flex-1">
-                            <div className="text-sm font-semibold">{opt.label}</div>
-                            <div className="text-xs text-zinc-400">{opt.desc}</div>
-                          </div>
-                          <div className="text-sm font-medium text-zinc-200">
-                            Rp{formatIDR(opt.price)}
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                    <div className="mt-3 text-xs text-zinc-400">
-                      Harga/lembar: <span className="text-emerald-300 font-medium">Rp{formatIDR(currentSizeOption.price)}</span>
-                    </div>
-                  </div>
-
-                  {/* Qty */}
-                  <div className="rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
-                    <div className="text-xs text-zinc-400">Jumlah</div>
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={() => bumpQty(-1)}
-                        className="h-14 w-14 rounded-2xl border border-white/10 bg-white/5 text-2xl hover:bg-white/10"
-                        aria-label="Decrease quantity"
-                      >
-                        −
-                      </button>
-
-                      <div className="min-w-[120px] text-center">
-                        <div className="text-4xl font-semibold">{qty}</div>
-                        <div className="text-xs text-zinc-400">maks 20</div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => bumpQty(1)}
-                        className="h-14 w-14 rounded-2xl border border-white/10 bg-white/5 text-2xl hover:bg-white/10"
-                        aria-label="Increase quantity"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div className="mt-4 text-xs text-zinc-400">Tips: scan barcode → set jumlah → bayar.</div>
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-sm text-zinc-400">
-                    Metode bayar: <span className="text-zinc-200">QRIS</span>
-                    {!snapReady && <span className="ml-2 text-xs text-zinc-500">(loading payment...)</span>}
-                  </div>
-
-                  <button
-                    onClick={pay}
-                    disabled={!canPay}
-                    className={[
-                      "w-full sm:w-auto rounded-2xl px-6 py-4 text-base font-semibold transition",
-                      "bg-white text-zinc-950 hover:bg-zinc-100 active:scale-[0.99]",
-                      "disabled:opacity-60 disabled:cursor-not-allowed",
-                    ].join(" ")}
-                  >
-                    {loading ? "Processing..." : `Pay Rp${formatIDR(total)}`}
-                  </button>
+            {/* Status */}
+            <div className={`mt-4 rounded-2xl border p-4 ${statusClasses}`}>
+              <div className="flex items-start gap-3">
+                <span className="text-lg">
+                  {status?.kind === "ok" ? "✅" : status?.kind === "err" ? "❌" : status?.kind === "warn" ? "⚠️" : "ℹ️"}
+                </span>
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wide opacity-80">Status</div>
+                  <div className="mt-1 text-sm leading-relaxed">{status?.text ?? "-"}</div>
                 </div>
               </div>
+            </div>
 
-              <div className={`mt-4 rounded-3xl border p-4 sm:p-5 ${statusClasses}`}>
-                <div className="text-xs uppercase tracking-wide opacity-80">Status</div>
-                <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{status?.text ?? "-"}</div>
-              </div>
-            </section>
-
-            {/* Right */}
-            <aside className="lg:col-span-2">
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
-                <h3 className="text-lg font-semibold">Operator</h3>
-                <ol className="mt-3 space-y-2 text-sm text-zinc-300">
-                  <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">1) Customer bayar QRIS</li>
-                  <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
-                    2) Cek order status <span className="font-semibold">PAID</span> di admin queue
-                  </li>
-                  <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">3) Open link → download → print</li>
-                </ol>
-                <div className="mt-5 rounded-2xl border border-white/10 bg-zinc-950/30 p-4 text-xs text-zinc-400">
-                  Catatan keamanan: jangan percaya screenshot “success”. Status valid harus dari sistem (webhook).
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
-                <h3 className="text-lg font-semibold">Kiosk Tips</h3>
-                <ul className="mt-3 space-y-2 text-sm text-zinc-300">
-                  <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
-                    <span className="font-semibold text-zinc-200">Scan Camera:</span> Gunakan kamera untuk scan QR secara langsung.
-                  </li>
-                  <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
-                    <span className="font-semibold text-zinc-200">Upload QR:</span> Upload gambar QR untuk decode otomatis (auto-compress jika besar).
-                  </li>
-                  <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
-                    Batasi input hanya domain fotoshare (sudah divalidasi server).
-                  </li>
-                </ul>
-              </div>
-            </aside>
+            {/* Help Section */}
+            <div className="mt-6 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-6">
+              <h3 className="text-lg font-bold text-gray-900">❓ Cara Cetak Foto</h3>
+              <ol className="mt-4 space-y-3">
+                <li className="flex items-start gap-3">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shrink-0">1</span>
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">Scan atau Upload QR</span> — Gunakan tombol "Scan" untuk menggunakan kamera, atau "Upload" untuk memilih gambar QR dari galeri.
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shrink-0">2</span>
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">Pilih ukuran & jumlah</span> — Tentukan ukuran cetak dan berapa banyak yang ingin dicetak.
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shrink-0">3</span>
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">Bayar dengan QRIS</span> — Klik tombol bayar dan scan QRIS menggunakan e-wallet atau mobile banking.
+                  </div>
+                </li>
+                <li className="flex items-start gap-3">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white shrink-0">4</span>
+                  <div className="text-sm text-gray-700">
+                    <span className="font-medium">Tunggu panggilan</span> — Setelah pembayaran berhasil, tunggu foto Anda dicetak dan dipanggil untuk pengambilan.
+                  </div>
+                </li>
+              </ol>
+            </div>
           </div>
         </div>
       </main>
