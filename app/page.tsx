@@ -104,8 +104,13 @@ export default function KioskPage() {
     if (!file) return;
 
     // Validate file type
-    if (!file.type.startsWith("image/")) {
-      setStatus({ kind: "warn", text: "File harus berupa gambar (PNG/JPG)." });
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/heic", "image/heif"];
+    const isAllowedType = allowedTypes.some(t => file.type.startsWith(t.split("/")[0])) ||
+      file.name.toLowerCase().endsWith(".heic") ||
+      file.name.toLowerCase().endsWith(".heif");
+
+    if (!file.type.startsWith("image/") && !isAllowedType) {
+      setStatus({ kind: "err", text: "Format file tidak didukung. Gunakan PNG, JPG, WebP, atau HEIC." });
       e.target.value = "";
       return;
     }
@@ -114,23 +119,40 @@ export default function KioskPage() {
 
     const MAX_SIZE = 1 * 1024 * 1024; // 1MB
     const needsCompression = file.size > MAX_SIZE;
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
 
     if (needsCompression) {
-      setStatus({ kind: "info", text: "Mengompres gambar..." });
+      setStatus({ kind: "info", text: `Mengompres gambar (${fileSizeMB}MB)...` });
     } else {
       setStatus({ kind: "info", text: "Membaca QR code..." });
     }
 
+    let objectUrl: string | null = null;
+
     try {
       // Create image element from file
       const img = document.createElement("img");
-      const objectUrl = URL.createObjectURL(file);
+      objectUrl = URL.createObjectURL(file);
 
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("Gagal memuat gambar."));
-        img.src = objectUrl;
-      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("load_failed"));
+          img.src = objectUrl!;
+        });
+      } catch {
+        throw new Error("image_load_failed");
+      }
+
+      // Check if image dimensions are valid
+      if (img.width === 0 || img.height === 0) {
+        throw new Error("image_invalid_dimensions");
+      }
+
+      // Check if image is too small for QR
+      if (img.width < 50 || img.height < 50) {
+        throw new Error("image_too_small");
+      }
 
       let imageToScan: HTMLImageElement | HTMLCanvasElement = img;
 
@@ -155,38 +177,76 @@ export default function KioskPage() {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          imageToScan = canvas;
+        if (!ctx) {
+          throw new Error("canvas_failed");
         }
+        ctx.drawImage(img, 0, 0, width, height);
+        imageToScan = canvas;
       }
-
-      // Clean up object URL
-      URL.revokeObjectURL(objectUrl);
 
       // Decode QR using ZXing
       const reader = new BrowserQRCodeReader();
-      const result = imageToScan instanceof HTMLCanvasElement
-        ? await reader.decodeFromCanvas(imageToScan)
-        : await reader.decodeFromImageElement(imageToScan);
-
-      const text = result.getText();
-      if (text) {
-        setInput(text);
-        setQty((q) => (q < 1 ? 1 : q));
-        setStatus({
-          kind: "ok", text: needsCompression
-            ? "QR code berhasil dibaca! (gambar dikompres)"
-            : "QR code berhasil dibaca!"
-        });
-        setTimeout(() => scanRef.current?.focus(), 50);
-      } else {
-        setStatus({ kind: "warn", text: "QR code tidak ditemukan dalam gambar." });
+      let result;
+      try {
+        result = imageToScan instanceof HTMLCanvasElement
+          ? await reader.decodeFromCanvas(imageToScan)
+          : await reader.decodeFromImageElement(imageToScan);
+      } catch {
+        throw new Error("qr_not_found");
       }
+
+      const text = result?.getText?.();
+      if (!text || text.trim().length === 0) {
+        throw new Error("qr_empty");
+      }
+
+      // Success!
+      setInput(text);
+      setQty((q) => (q < 1 ? 1 : q));
+      setStatus({
+        kind: "ok",
+        text: needsCompression
+          ? "QR code berhasil dibaca! (gambar dikompres)"
+          : "QR code berhasil dibaca!"
+      });
+      setTimeout(() => scanRef.current?.focus(), 50);
+
     } catch (err: any) {
       console.error("QR decode error:", err);
-      setStatus({ kind: "warn", text: "QR code tidak ditemukan atau tidak valid." });
+
+      // Specific error messages
+      const errorCode = err?.message || "unknown";
+      let errorMsg = "Terjadi kesalahan. Coba lagi.";
+
+      switch (errorCode) {
+        case "image_load_failed":
+          errorMsg = "Gagal memuat gambar. Format mungkin tidak didukung oleh browser.";
+          break;
+        case "image_invalid_dimensions":
+          errorMsg = "Gambar tidak valid atau rusak (dimensi 0).";
+          break;
+        case "image_too_small":
+          errorMsg = "Gambar terlalu kecil. Gunakan gambar dengan resolusi lebih tinggi.";
+          break;
+        case "canvas_failed":
+          errorMsg = "Gagal memproses gambar. Coba refresh halaman.";
+          break;
+        case "qr_not_found":
+          errorMsg = "QR code tidak ditemukan dalam gambar. Pastikan gambar berisi QR code yang jelas.";
+          break;
+        case "qr_empty":
+          errorMsg = "QR code kosong atau tidak berisi data.";
+          break;
+        default:
+          errorMsg = "QR code tidak dapat dibaca. Coba gambar lain dengan QR yang lebih jelas.";
+      }
+
+      setStatus({ kind: "err", text: errorMsg });
     } finally {
+      // Clean up object URL
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
       setDecoding(false);
       // Clear file input - file not saved
       e.target.value = "";
