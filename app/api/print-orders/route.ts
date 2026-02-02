@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const MIDTRANS_IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === "true";
 
-type SizeKey = "4x6" | "strip" | "6x8";
+type SizeKey = "4x6" | "strip";
 
 function parseFotoshareToken(input: string): string {
   const s = input.trim();
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "qty must be 1..20" }, { status: 400 });
     }
 
-    const allowedSizes = new Set<SizeKey>(["4x6", "strip", "6x8"]);
+    const allowedSizes = new Set<SizeKey>(["4x6", "strip"]);
     if (!allowedSizes.has(size)) return NextResponse.json({ error: "invalid size" }, { status: 400 });
 
     if (!isValidEmail(customer_email)) {
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     }
 
     // pricing (sementara)
-    const unitPrice = size === "6x8" ? 20000 : size === "strip" ? 15000 : 10000;
+    const unitPrice = 10000; // semua ukuran sama
     const grossAmount = unitPrice * qty;
 
     const token = parseFotoshareToken(fotoshare_input);

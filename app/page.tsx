@@ -2,6 +2,7 @@
 
 import Script from "next/script";
 import { useMemo, useRef, useState } from "react";
+import { BrowserQRCodeReader } from "@zxing/browser";
 import CameraScannerModal from "./components/CameraScannerModal";
 
 
@@ -12,10 +13,15 @@ declare global {
   }
 }
 
-type SizeKey = "4x6";
+type SizeKey = "4x6" | "strip";
 
-function unitPrice(_size: SizeKey) {
-  return 10000; // 4x6 fixed
+const SIZE_OPTIONS: { key: SizeKey; label: string; desc: string; price: number }[] = [
+  { key: "4x6", label: "4×6", desc: "Standard photo print", price: 10000 },
+  { key: "strip", label: "2×6", desc: "Photo strip", price: 10000 },
+];
+
+function unitPrice(size: SizeKey) {
+  return SIZE_OPTIONS.find((s) => s.key === size)?.price ?? 10000;
 }
 
 function formatIDR(n: number) {
@@ -37,7 +43,7 @@ export default function KioskPage() {
   // Fotoshare + order
   const [input, setInput] = useState("");
   const [qty, setQty] = useState(0);
-  const size: SizeKey = "4x6";
+  const [size, setSize] = useState<SizeKey>("4x6");
 
   const [loading, setLoading] = useState(false);
   const [snapReady, setSnapReady] = useState(false);
@@ -61,8 +67,11 @@ export default function KioskPage() {
   const successTimerRef = useRef<number | null>(null);
 
   const scanRef = useRef<HTMLInputElement | null>(null);
+  const qrFileRef = useRef<HTMLInputElement | null>(null);
+  const [decoding, setDecoding] = useState(false);
 
   const total = useMemo(() => unitPrice(size) * qty, [qty, size]);
+  const currentSizeOption = SIZE_OPTIONS.find((s) => s.key === size)!;
 
   const snapScriptUrl =
     process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true"
@@ -85,7 +94,68 @@ export default function KioskPage() {
     setEmail("");
     setInput("");
     setQty(0);
+    setSize("4x6");
     setTimeout(() => scanRef.current?.focus(), 50);
+  }
+
+  // Handle QR Upload - decode QR from image file
+  async function handleQRUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setStatus({ kind: "warn", text: "File harus berupa gambar (PNG/JPG)." });
+      e.target.value = "";
+      return;
+    }
+
+    // Validate max 1MB
+    const MAX_SIZE = 1 * 1024 * 1024; // 1MB
+    if (file.size > MAX_SIZE) {
+      setStatus({ kind: "warn", text: "Ukuran file maksimal 1MB." });
+      e.target.value = "";
+      return;
+    }
+
+    setDecoding(true);
+    setStatus({ kind: "info", text: "Membaca QR code..." });
+
+    try {
+      // Create image element from file
+      const img = document.createElement("img");
+      const objectUrl = URL.createObjectURL(file);
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Gagal memuat gambar."));
+        img.src = objectUrl;
+      });
+
+      // Decode QR using ZXing
+      const reader = new BrowserQRCodeReader();
+      const result = await reader.decodeFromImageElement(img);
+
+      // Clean up object URL
+      URL.revokeObjectURL(objectUrl);
+
+      const text = result.getText();
+      if (text) {
+        setInput(text);
+        setQty((q) => (q < 1 ? 1 : q));
+        setStatus({ kind: "ok", text: "QR code berhasil dibaca!" });
+        setTimeout(() => scanRef.current?.focus(), 50);
+      } else {
+        setStatus({ kind: "warn", text: "QR code tidak ditemukan dalam gambar." });
+      }
+    } catch (err: any) {
+      console.error("QR decode error:", err);
+      setStatus({ kind: "warn", text: "QR code tidak ditemukan atau tidak valid." });
+    } finally {
+      setDecoding(false);
+      // Clear file input - file not saved
+      e.target.value = "";
+    }
   }
 
   function closeSuccessAndReset() {
@@ -192,10 +262,10 @@ export default function KioskPage() {
     status?.kind === "ok"
       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
       : status?.kind === "err"
-      ? "border-red-500/30 bg-red-500/10 text-red-200"
-      : status?.kind === "warn"
-      ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
-      : "border-sky-500/30 bg-sky-500/10 text-sky-100";
+        ? "border-red-500/30 bg-red-500/10 text-red-200"
+        : status?.kind === "warn"
+          ? "border-amber-500/30 bg-amber-500/10 text-amber-100"
+          : "border-sky-500/30 bg-sky-500/10 text-sky-100";
 
   return (
     <>
@@ -315,7 +385,7 @@ export default function KioskPage() {
               <div className="text-2xl font-semibold">Rp{formatIDR(total)}</div>
             </div>
           </div>
-          
+
           {/* Layout */}
           <div className="mt-6 grid gap-4 lg:grid-cols-5">
             {/* Left */}
@@ -323,12 +393,12 @@ export default function KioskPage() {
               <div className="rounded-3xl border border-white/10 bg-white/5 p-4 sm:p-6">
                 <h2 className="text-lg font-semibold">Input</h2>
                 <p className="mt-1 text-sm text-zinc-400">
-                  Scan barcode ke input FotoShare (scanner USB) atau tempel link.
+                  Silahkan Upload/Scan QR foto yang anda ingin cetak.
                 </p>
 
                 {/* Name */}
                 <div className="mt-4">
-                  <label className="text-xs text-zinc-400">Nama (opsional)</label>
+                  <label className="text-xs text-zinc-400">Nama</label>
                   <input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -339,7 +409,7 @@ export default function KioskPage() {
 
                 {/* Email */}
                 <div className="mt-4">
-                  <label className="text-xs text-zinc-400">Email (opsional, untuk receipt)</label>
+                  <label className="text-xs text-zinc-400">Email (untuk receipt dikirim melalui email)</label>
                   <input
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -367,11 +437,19 @@ export default function KioskPage() {
 
                       <button
                         type="button"
-                        onClick={() => scanRef.current?.focus()}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10"
+                        onClick={() => qrFileRef.current?.click()}
+                        disabled={decoding}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 hover:bg-white/10 disabled:opacity-50"
                       >
-                        Focus Scan
+                        {decoding ? "Membaca..." : "Upload QR"}
                       </button>
+                      <input
+                        ref={qrFileRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        onChange={handleQRUpload}
+                        className="hidden"
+                      />
                     </div>
                   </div>
 
@@ -385,15 +463,40 @@ export default function KioskPage() {
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {/* Size info */}
+                  {/* Size selection */}
                   <div className="rounded-2xl border border-white/10 bg-zinc-950/30 p-4">
-                    <div className="text-xs text-zinc-400">Ukuran</div>
-                    <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-4">
-                      <div className="text-sm font-semibold">4×6</div>
-                      <div className="mt-1 text-xs text-zinc-400">Standard photo print</div>
+                    <div className="text-xs text-zinc-400">Pilih Ukuran</div>
+                    <div className="mt-3 space-y-2">
+                      {SIZE_OPTIONS.map((opt) => (
+                        <label
+                          key={opt.key}
+                          className={[
+                            "flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition",
+                            size === opt.key
+                              ? "border-emerald-500/50 bg-emerald-500/10"
+                              : "border-white/10 bg-white/5 hover:bg-white/10",
+                          ].join(" ")}
+                        >
+                          <input
+                            type="radio"
+                            name="size"
+                            value={opt.key}
+                            checked={size === opt.key}
+                            onChange={() => setSize(opt.key)}
+                            className="h-4 w-4 accent-emerald-400"
+                          />
+                          <div className="flex-1">
+                            <div className="text-sm font-semibold">{opt.label}</div>
+                            <div className="text-xs text-zinc-400">{opt.desc}</div>
+                          </div>
+                          <div className="text-sm font-medium text-zinc-200">
+                            Rp{formatIDR(opt.price)}
+                          </div>
+                        </label>
+                      ))}
                     </div>
                     <div className="mt-3 text-xs text-zinc-400">
-                      Harga/lembar: <span className="text-zinc-200">Rp{formatIDR(unitPrice("4x6"))}</span>
+                      Harga/lembar: <span className="text-emerald-300 font-medium">Rp{formatIDR(currentSizeOption.price)}</span>
                     </div>
                   </div>
 
@@ -474,7 +577,10 @@ export default function KioskPage() {
                 <h3 className="text-lg font-semibold">Kiosk Tips</h3>
                 <ul className="mt-3 space-y-2 text-sm text-zinc-300">
                   <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
-                    Scanner USB paling stabil untuk barcode. Klik “Focus Scan” lalu scan.
+                    <span className="font-semibold text-zinc-200">Scan Camera:</span> Gunakan kamera untuk scan QR secara langsung.
+                  </li>
+                  <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
+                    <span className="font-semibold text-zinc-200">Upload QR:</span> Upload gambar QR (max 1MB) untuk decode otomatis.
                   </li>
                   <li className="rounded-2xl border border-white/10 bg-zinc-950/30 p-3">
                     Batasi input hanya domain fotoshare (sudah divalidasi server).

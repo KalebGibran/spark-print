@@ -47,6 +47,7 @@ export default function AdminPage() {
   // Filters
   const [status, setStatus] = useState<"ALL" | "PENDING" | "PAID" | "PRINTED" | "FAILED">("ALL");
   const [needsPrint, setNeedsPrint] = useState(false); // PAID only shortcut
+  const [sizeFilter, setSizeFilter] = useState<"ALL" | "4x6" | "strip">("ALL");
   const [q, setQ] = useState("");
 
   // Sort
@@ -66,6 +67,7 @@ export default function AdminPage() {
     const params = new URLSearchParams();
     params.set("status", status);
     params.set("needsPrint", needsPrint ? "1" : "0");
+    params.set("size", sizeFilter);
     params.set("q", q.trim());
     params.set("sortField", sortField);
     params.set("sortDir", sortDir);
@@ -105,7 +107,7 @@ export default function AdminPage() {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, password, status, needsPrint, q, sortField, sortDir]);
+  }, [autoRefresh, password, status, needsPrint, sizeFilter, q, sortField, sortDir]);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -189,6 +191,19 @@ export default function AdminPage() {
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="text-xs text-zinc-400">Filter ukuran</div>
+            <select
+              value={sizeFilter}
+              onChange={(e) => setSizeFilter(e.target.value as any)}
+              className="mt-2 w-full rounded-xl border border-white/10 bg-zinc-950/40 px-3 py-3 outline-none"
+            >
+              <option value="ALL">Semua Ukuran</option>
+              <option value="4x6">4×6 saja</option>
+              <option value="strip">2×6 (strip) saja</option>
+            </select>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-zinc-400">Sort field</div>
             <select
               value={sortField}
@@ -200,7 +215,7 @@ export default function AdminPage() {
             </select>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          {/* <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-zinc-400">Sort direction</div>
             <select
               value={sortDir}
@@ -210,7 +225,7 @@ export default function AdminPage() {
               <option value="desc">desc (newest first)</option>
               <option value="asc">asc (oldest first)</option>
             </select>
-          </div>
+          </div> */}
         </div>
 
         {msg && (

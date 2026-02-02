@@ -8,6 +8,7 @@ function isAuthed(req: Request) {
 }
 
 const ALLOWED_STATUS = new Set(["ALL", "PENDING", "PAID", "PRINTED", "FAILED"]);
+const ALLOWED_SIZE = new Set(["ALL", "4x6", "strip"]);
 const ALLOWED_SORT_FIELD = new Set(["paid_at", "created_at"]);
 const ALLOWED_SORT_DIR = new Set(["desc", "asc"]);
 
@@ -18,12 +19,14 @@ export async function GET(req: Request) {
 
   const status = (url.searchParams.get("status") || "ALL").toUpperCase();
   const needsPrint = (url.searchParams.get("needsPrint") || "0") === "1"; // PAID only
+  const sizeFilter = url.searchParams.get("size") || "ALL";
   const q = (url.searchParams.get("q") || "").trim();
   const sortField = (url.searchParams.get("sortField") || "paid_at").toLowerCase();
   const sortDir = (url.searchParams.get("sortDir") || "desc").toLowerCase();
   const limitRaw = Number(url.searchParams.get("limit") || 200);
 
   if (!ALLOWED_STATUS.has(status)) return NextResponse.json({ error: "invalid status" }, { status: 400 });
+  if (!ALLOWED_SIZE.has(sizeFilter)) return NextResponse.json({ error: "invalid size" }, { status: 400 });
   if (!ALLOWED_SORT_FIELD.has(sortField)) return NextResponse.json({ error: "invalid sortField" }, { status: 400 });
   if (!ALLOWED_SORT_DIR.has(sortDir)) return NextResponse.json({ error: "invalid sortDir" }, { status: 400 });
 
@@ -41,6 +44,11 @@ export async function GET(req: Request) {
     query = query.eq("status", "PAID");
   } else if (status !== "ALL") {
     query = query.eq("status", status);
+  }
+
+  // Filter size
+  if (sizeFilter !== "ALL") {
+    query = query.eq("size", sizeFilter);
   }
 
   // Search (simple OR)
