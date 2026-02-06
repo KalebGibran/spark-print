@@ -16,8 +16,8 @@ declare global {
 type SizeKey = "4x6" | "strip";
 
 const SIZE_OPTIONS: { key: SizeKey; label: string; desc: string; price: number }[] = [
-  { key: "4x6", label: "4×6", desc: "Standard photo print", price: 10000 },
-  { key: "strip", label: "2×6", desc: "Photo strip", price: 10000 },
+  { key: "4x6", label: "4×6", desc: "Standard 1x", price: 10000 },
+  { key: "strip", label: "2×6", desc: "Photo strip 2x", price: 10000 },
 ];
 
 function unitPrice(size: SizeKey) {
@@ -505,15 +505,16 @@ export default function KioskPage() {
                 }}
               />
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-50 px-4 py-1.5 text-sm font-medium text-pink-700">
-              <span className="h-2 w-2 rounded-full bg-[#ff4b86] animate-pulse" />
-              Print Your Photo.
-            </div>
-            <h1 className="mt-4 text-3xl font-bold text-gray-900 sm:text-4xl">
-              Spark Stage Print
-            </h1>
-            <p className="mt-2 text-gray-600">
-              Scan QR → Bayar → Ambil foto.
+            <img
+              src="/you did great star-01.png"
+              alt="You did great, Star!"
+              className="mx-auto mb-4 w-full max-w-[280px] sm:max-w-[400px] h-auto object-contain"
+            />
+            <h2 className="text-lg font-bold text-[#ff4b86] sm:text-2xl text-balance">
+              Your shoot is complete your photos are ready to print.
+            </h2>
+            <p className="mt-2 text-xs text-gray-500 sm:text-sm">
+              Prepare your Captured Final Take QR Code or link. <br /> Available on your last step screen on stage
             </p>
           </div>
 
@@ -528,7 +529,7 @@ export default function KioskPage() {
           {/* Main Form */}
           <div className="mt-8">
             <div className="rounded-3xl bg-white p-6 shadow-xl shadow-gray-200/50 border border-gray-100 sm:p-8">
-              <h2 className="text-xl font-bold text-gray-900">📝 Isi Data Pesanan</h2>
+              <h2 className="text-xl font-bold text-gray-900">Complete the form below:</h2>
               <p className="mt-1 text-sm text-gray-500">
                 Scan atau upload QR code dari FotoShare untuk mencetak foto Anda.
               </p>
@@ -549,7 +550,7 @@ export default function KioskPage() {
               {/* Email */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700">
-                  Email <span className="text-red-500">*</span>
+                  Email <span className="text-red-500">* (untuk e-receipt)</span>
                 </label>
                 <input
                   value={email}
@@ -567,7 +568,7 @@ export default function KioskPage() {
               {/* Queue Number */}
               <div className="mt-4">
                 <label className="block text-sm font-medium text-gray-700">
-                  Nomor Urut <span className="text-red-500 font-normal">*</span>
+                  Print Code <span className="text-red-500 font-normal">*</span>
                 </label>
                 <input
                   type="text"
@@ -590,7 +591,7 @@ export default function KioskPage() {
               <div className="mt-4">
                 <div className="flex items-center justify-between gap-3">
                   <label className="block text-sm font-medium text-gray-700">
-                    Link FotoShare <span className="text-red-500">*</span>
+                    Link Final Take <span className="text-red-500">*</span>
                   </label>
 
                   <div className="flex gap-2">
@@ -599,7 +600,7 @@ export default function KioskPage() {
                       onClick={() => setScanOpen(true)}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
                     >
-                      📷 Scan
+                      📷 Scan QR
                     </button>
 
                     <button
@@ -608,7 +609,7 @@ export default function KioskPage() {
                       disabled={decoding}
                       className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-50"
                     >
-                      {decoding ? "⏳ Membaca..." : "📁 Upload"}
+                      {decoding ? "⏳ Membaca..." : "📁 Upload QR"}
                     </button>
                     <input
                       ref={qrFileRef}
@@ -632,7 +633,7 @@ export default function KioskPage() {
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
                 {/* Size selection */}
                 <div className="rounded-2xl bg-gray-50 border border-gray-200 p-4">
-                  <div className="text-sm font-medium text-gray-700">📐 Pilih Ukuran</div>
+                  <div className="text-sm font-medium text-gray-700">Choose Photo Size:</div>
                   <div className="mt-3 space-y-2">
                     {SIZE_OPTIONS.map((opt) => (
                       <label
@@ -666,7 +667,7 @@ export default function KioskPage() {
 
                 {/* Qty */}
                 <div className="rounded-2xl bg-gray-50 border border-gray-200 p-4">
-                  <div className="text-sm font-medium text-gray-700">🔢 Jumlah Cetak</div>
+                  <div className="text-sm font-medium text-gray-700">Quantity</div>
                   <div className="mt-3 flex items-center justify-between gap-3">
                     <button
                       type="button"
@@ -697,7 +698,7 @@ export default function KioskPage() {
               {/* Payment */}
               <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-gray-600 flex items-center gap-2">
-                  <span>💳 Metode bayar:</span>
+                  <span>Payment Method:</span>
                   <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
                     QRIS
                   </span>
@@ -719,7 +720,7 @@ export default function KioskPage() {
                     "disabled:opacity-60 disabled:cursor-not-allowed disabled:shadow-none",
                   ].join(" ")}
                 >
-                  {loading ? "⏳ Memproses..." : `Bayar Rp${formatIDR(total)}`}
+                  {loading ? "⏳ Processing..." : `Payment Rp${formatIDR(total)}`}
                 </button>
               </div>
             </div>
