@@ -511,7 +511,7 @@ export default function KioskPage() {
               className="mx-auto mb-4 w-full max-w-[280px] sm:max-w-[400px] h-auto object-contain"
             />
             <h2 className="text-lg font-bold text-[#ff4b86] sm:text-2xl text-balance">
-              Your shoot is complete your photos are ready to print.
+              Your shoot is complete, your photos are ready to print.
             </h2>
             <p className="mt-2 text-xs text-gray-500 sm:text-sm">
               Prepare your Captured Final Take QR Code or link. <br /> Available on your last step screen on stage
