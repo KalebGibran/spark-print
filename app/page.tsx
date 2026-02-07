@@ -65,6 +65,9 @@ export default function KioskPage() {
     queueNumber: number | null;
   } | null>(null);
 
+  // Payment method
+  const [paymentMethod, setPaymentMethod] = useState<"qris" | "cashier">("qris");
+
   // Keep timeout id so we can clear on manual close
   const successTimerRef = useRef<number | null>(null);
 
@@ -98,6 +101,7 @@ export default function KioskPage() {
     setInput("");
     setQty(0);
     setSize("4x6");
+    setPaymentMethod("qris");
     setTimeout(() => scanRef.current?.focus(), 50);
   }
 
@@ -267,7 +271,7 @@ export default function KioskPage() {
 
   const canPay =
     !loading &&
-    snapReady &&
+    (paymentMethod === "cashier" || snapReady) &&
     name.trim().length > 0 &&
     email.trim().length > 0 &&
     isValidEmail(email.trim()) &&
@@ -297,7 +301,7 @@ export default function KioskPage() {
       setStatus({ kind: "warn", text: "Pilih jumlah print dulu (minimal 1)." });
       return;
     }
-    if (!window.snap) {
+    if (paymentMethod === "qris" && !window.snap) {
       setStatus({ kind: "err", text: "Sistem pembayaran belum siap. Refresh halaman." });
       return;
     }
@@ -320,6 +324,7 @@ export default function KioskPage() {
           queue_number: queueNum,
           customer_name: name,
           customer_email: email,
+          payment_method: paymentMethod, // Add payment method
         }),
       });
 
@@ -330,45 +335,69 @@ export default function KioskPage() {
       }
 
       const { snap_token, midtrans_order_id, order_id } = j as {
-        snap_token: string;
+        snap_token?: string;
         midtrans_order_id: string;
         order_id: string;
       };
 
-      setStatus({ kind: "info", text: "Membuka halaman pembayaran..." });
+      if (paymentMethod === "cashier") {
+        // Direct success for cashier
+        setSuccessInfo({
+          midtrans_order_id,
+          amount: total,
+          email: email.trim() || null,
+          name: name.trim() || null,
+          queueNumber: queueNum,
+        });
+        setSuccessOpen(true);
+        setStatus({ kind: "ok", text: "Pesanan berhasil dibuat. Silakan bayar di kasir." });
+        
+        clearSuccessTimer();
+        successTimerRef.current = window.setTimeout(() => {
+          closeSuccessAndReset();
+        }, SUCCESS_MODAL_AUTO_CLOSE_MS);
+      } else {
+        // Snap payment
+        if (!snap_token) {
+           throw new Error("Gagal mendapatkan token pembayaran.");
+        }
 
-      window.snap.pay(snap_token, {
-        onSuccess(result: any) {
-          console.log("Payment success:", result);
-          setSuccessInfo({
-            midtrans_order_id,
-            amount: total,
-            email: email.trim() || null,
-            name: name.trim() || null,
-            queueNumber: queueNum,
-          });
-          setSuccessOpen(true);
+        setStatus({ kind: "info", text: "Membuka halaman pembayaran..." });
 
-          clearSuccessTimer();
-          successTimerRef.current = window.setTimeout(() => {
-            closeSuccessAndReset();
-          }, SUCCESS_MODAL_AUTO_CLOSE_MS);
-        },
-        onPending(result: any) {
-          console.log("Payment pending:", result);
-          setStatus({
-            kind: "warn",
-            text: `Pembayaran pending. Order ID: ${midtrans_order_id}. Selesaikan pembayaran atau tunggu konfirmasi.`,
-          });
-        },
-        onError(result: any) {
-          console.log("Payment error:", result);
-          setStatus({ kind: "err", text: "Pembayaran gagal. Silakan coba lagi." });
-        },
-        onClose() {
-          setStatus({ kind: "warn", text: "Popup pembayaran ditutup. Klik bayar untuk mencoba lagi." });
-        },
-      });
+        window.snap.pay(snap_token, {
+          onSuccess(result: any) {
+            console.log("Payment success:", result);
+            setSuccessInfo({
+              midtrans_order_id,
+              amount: total,
+              email: email.trim() || null,
+              name: name.trim() || null,
+              queueNumber: queueNum,
+            });
+            setSuccessOpen(true);
+
+            clearSuccessTimer();
+            successTimerRef.current = window.setTimeout(() => {
+              closeSuccessAndReset();
+            }, SUCCESS_MODAL_AUTO_CLOSE_MS);
+          },
+          onPending(result: any) {
+            console.log("Payment pending:", result);
+            setStatus({
+              kind: "warn",
+              text: `Pembayaran pending. Order ID: ${midtrans_order_id}. Selesaikan pembayaran atau tunggu konfirmasi.`,
+            });
+          },
+          onError(result: any) {
+            console.log("Payment error:", result);
+            setStatus({ kind: "err", text: "Pembayaran gagal. Silakan coba lagi." });
+          },
+          onClose() {
+            setStatus({ kind: "warn", text: "Popup pembayaran ditutup. Klik bayar untuk mencoba lagi." });
+          },
+        });
+      }
+
     } catch (e: any) {
       console.error("Pay error:", e);
       setStatus({ kind: "err", text: e?.message ?? "Error" });
@@ -408,11 +437,15 @@ export default function KioskPage() {
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  Pembayaran Berhasil
+                  {paymentMethod === 'cashier' ? 'Pesanan Dibuat' : 'Pembayaran Berhasil'}
                 </div>
-                <h3 className="mt-3 text-xl font-bold text-gray-900">Terima kasih! 🎉</h3>
+                <h3 className="mt-3 text-xl font-bold text-gray-900">
+                   {paymentMethod === 'cashier' ? 'Silakan Bayar di Kasir' : 'Terima kasih! 🎉'}
+                </h3>
                 <p className="mt-1 text-sm text-gray-600">
-                  Foto Anda sedang diproses. Tunggu panggilan untuk pengambilan.
+                  {paymentMethod === 'cashier' 
+                    ? 'Tunjukkan Order ID ini ke kasir untuk melakukan pembayaran.' 
+                    : 'Foto Anda sedang diproses. Tunggu panggilan untuk pengambilan.'}
                 </p>
               </div>
 
@@ -427,11 +460,11 @@ export default function KioskPage() {
             <div className="mt-5 grid gap-3 rounded-2xl bg-gray-50 border border-gray-200 p-4 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-gray-500">Order ID</span>
-                <span className="font-mono text-gray-900 font-medium">{successInfo?.midtrans_order_id ?? "-"}</span>
+                <span className="font-mono text-gray-900 font-medium text-lg">{successInfo?.midtrans_order_id ?? "-"}</span>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-gray-500">Total</span>
-                <span className="text-gray-900 font-semibold">Rp{formatIDR(successInfo?.amount ?? 0)}</span>
+                <span className="text-gray-900 font-semibold text-lg">Rp{formatIDR(successInfo?.amount ?? 0)}</span>
               </div>
 
               {successInfo?.name && (
@@ -449,16 +482,23 @@ export default function KioskPage() {
               )}
 
               <div className="mt-1 rounded-xl bg-pink-50 border border-pink-100 p-3 text-xs text-pink-700">
-                {successInfo?.email ? (
-                  <>
-                    📧 Receipt dikirim ke: <span className="font-semibold">{successInfo.email}</span>
-                    <br />
-                    Cek folder Inbox atau Spam jika belum menerima.
-                  </>
+                {paymentMethod === 'cashier' ? (
+                   <>
+                    ⚠️ <span className="font-semibold">PENTING:</span> Pesanan belum lunas. <br/>
+                    Segera lakukan pembayaran di kasir agar foto dapat dicetak.
+                   </>
                 ) : (
-                  <>
-                    💡 Simpan <span className="font-semibold">Order ID</span> di atas sebagai bukti pesanan.
-                  </>
+                  successInfo?.email ? (
+                    <>
+                      📧 Receipt dikirim ke: <span className="font-semibold">{successInfo.email}</span>
+                      <br />
+                      Cek folder Inbox atau Spam jika belum menerima.
+                    </>
+                  ) : (
+                    <>
+                      💡 Simpan <span className="font-semibold">Order ID</span> di atas sebagai bukti pesanan.
+                    </>
+                  )
                 )}
               </div>
             </div>
@@ -517,14 +557,6 @@ export default function KioskPage() {
               Prepare your Captured Final Take QR Code or link. <br /> Available on your last step screen on stage
             </p>
           </div>
-
-          {/* Total Card
-          <div className="mt-6 flex justify-center">
-            <div className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 text-center shadow-lg shadow-blue-500/20">
-              <div className="text-sm text-blue-100">Total Pembayaran</div>
-              <div className="text-3xl font-bold text-white">Rp{formatIDR(total)}</div>
-            </div>
-          </div> */}
 
           {/* Main Form */}
           <div className="mt-8">
@@ -695,14 +727,35 @@ export default function KioskPage() {
                 </div>
               </div>
 
-              {/* Payment */}
+              {/* Payment Method Selection */}
               <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-gray-600 flex items-center gap-2">
                   <span>Payment Method:</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-                    QRIS
-                  </span>
-                  {!snapReady && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("qris")}
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        paymentMethod === "qris" 
+                          ? "bg-gray-800 text-white" 
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      QRIS
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod("cashier")}
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                        paymentMethod === "cashier" 
+                          ? "bg-pink-600 text-white" 
+                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      Pay at Cashier
+                    </button>
+                  </div>
+                  {paymentMethod === "qris" && !snapReady && (
                     <span className="text-xs text-gray-400 animate-pulse">
                       (memuat pembayaran...)
                     </span>

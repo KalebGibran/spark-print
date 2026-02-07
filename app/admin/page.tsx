@@ -17,6 +17,7 @@ type Order = {
   created_at: string;
   paid_at: string | null;
   midtrans_order_id: string | null;
+  payment_method?: string | null;
 };
 
 function formatIDR(n: number) {
@@ -40,19 +41,21 @@ function badgeClasses(status: string) {
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [qrisOrders, setQrisOrders] = useState<Order[]>([]);
+  const [cashierOrders, setCashierOrders] = useState<Order[]>([]);
   const [msg, setMsg] = useState("");
-
   const [autoRefresh, setAutoRefresh] = useState(true);
+
+  // Tab
+  const [activeTab, setActiveTab] = useState<"qris" | "cashier">("qris");
 
   // Filters
   const [status, setStatus] = useState<"ALL" | "PENDING" | "PAID" | "PRINTED" | "FAILED">("ALL");
-  const [needsPrint, setNeedsPrint] = useState(false); // PAID only shortcut
+  const [needsPrint, setNeedsPrint] = useState(false);
   const [sizeFilter, setSizeFilter] = useState<"ALL" | "4x6" | "strip">("ALL");
   const [q, setQ] = useState("");
 
   // Sort
-  const [sortField, setSortField] = useState<"paid_at" | "created_at">("paid_at");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
 
   const authHeader = useMemo(() => ({ "x-admin-password": password }), [password]);
@@ -65,21 +68,38 @@ export default function AdminPage() {
 
     setMsg("loading...");
 
-    const params = new URLSearchParams();
-    params.set("status", status);
-    params.set("needsPrint", needsPrint ? "1" : "0");
-    params.set("size", sizeFilter);
-    params.set("q", q.trim());
-    params.set("sortField", sortField);
-    params.set("sortDir", sortDir);
-    params.set("limit", "200");
+    // Load QRIS orders (payment_method = 'qris' or null, exclude PENDING since they're waiting for payment)
+    const qrisParams = new URLSearchParams();
+    qrisParams.set("status", needsPrint ? "PAID" : status);
+    qrisParams.set("size", sizeFilter);
+    qrisParams.set("q", q.trim());
+    qrisParams.set("sortField", "paid_at");
+    qrisParams.set("sortDir", sortDir);
+    qrisParams.set("limit", "200");
+    qrisParams.set("paymentMethod", "qris");
 
-    const r = await fetch(`/api/admin/orders?${params.toString()}`, { headers: authHeader });
-    const j = await r.json().catch(() => ({}));
+    const qrisRes = await fetch(`/api/admin/orders?${qrisParams.toString()}`, { headers: authHeader });
+    const qrisJson = await qrisRes.json().catch(() => ({}));
 
-    if (!r.ok) return setMsg(j?.error ?? `HTTP ${r.status}`);
+    // Load Cashier orders
+    const cashierParams = new URLSearchParams();
+    cashierParams.set("status", status);
+    cashierParams.set("size", sizeFilter);
+    cashierParams.set("q", q.trim());
+    cashierParams.set("sortField", "created_at");
+    cashierParams.set("sortDir", sortDir);
+    cashierParams.set("limit", "200");
+    cashierParams.set("paymentMethod", "cashier");
 
-    setOrders(j.orders ?? []);
+    const cashierRes = await fetch(`/api/admin/orders?${cashierParams.toString()}`, { headers: authHeader });
+    const cashierJson = await cashierRes.json().catch(() => ({}));
+
+    if (!qrisRes.ok || !cashierRes.ok) {
+      return setMsg(qrisJson?.error ?? cashierJson?.error ?? "Load failed");
+    }
+
+    setQrisOrders(qrisJson.orders ?? []);
+    setCashierOrders(cashierJson.orders ?? []);
     setMsg("");
   }
 
@@ -92,7 +112,23 @@ export default function AdminPage() {
 
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
-      // 409 not_paid_or_already_printed -> show clean message
+      return alert(j?.error ?? `HTTP ${r.status}`);
+    }
+
+    await load();
+  }
+
+  async function markPaid(id: string) {
+    if (!confirm("Tandai pesanan ini sebagai SUDAH DIBAYAR?")) return;
+
+    const r = await fetch("/api/admin/mark-paid", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader },
+      body: JSON.stringify({ id }),
+    });
+
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
       return alert(j?.error ?? `HTTP ${r.status}`);
     }
 
@@ -108,7 +144,9 @@ export default function AdminPage() {
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoRefresh, password, status, needsPrint, sizeFilter, q, sortField, sortDir]);
+  }, [autoRefresh, password, status, needsPrint, sizeFilter, q, sortDir]);
+
+  const currentOrders = activeTab === "qris" ? qrisOrders : cashierOrders;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
@@ -166,6 +204,32 @@ export default function AdminPage() {
               🔄 Refresh
             </button>
           </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="mt-6 flex gap-2">
+          <button
+            onClick={() => setActiveTab("qris")}
+            className={[
+              "px-4 py-2 rounded-lg font-semibold text-sm transition-all",
+              activeTab === "qris"
+                ? "bg-blue-600 text-white shadow"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            ].join(" ")}
+          >
+            💳 Pesanan QRIS ({qrisOrders.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("cashier")}
+            className={[
+              "px-4 py-2 rounded-lg font-semibold text-sm transition-all",
+              activeTab === "cashier"
+                ? "bg-pink-600 text-white shadow"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            ].join(" ")}
+          >
+            🏪 Pesanan Kasir ({cashierOrders.length})
+          </button>
         </div>
 
         {/* Filters */}
@@ -256,14 +320,32 @@ export default function AdminPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-sm border border-gray-200 shadow-sm">
             <span className="text-gray-500">Total:</span>
-            <span className="font-semibold text-gray-900">{orders.length}</span>
+            <span className="font-semibold text-gray-900">{currentOrders.length}</span>
           </div>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-sm border border-blue-200">
-            <span className="text-blue-600">Perlu Print:</span>
-            <span className="font-semibold text-blue-700">
-              {orders.filter(o => o.status === "PAID").length}
-            </span>
-          </div>
+          {activeTab === "qris" && (
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-sm border border-blue-200">
+              <span className="text-blue-600">Perlu Print:</span>
+              <span className="font-semibold text-blue-700">
+                {currentOrders.filter(o => o.status === "PAID").length}
+              </span>
+            </div>
+          )}
+          {activeTab === "cashier" && (
+            <>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-sm border border-amber-200">
+                <span className="text-amber-600">Belum Bayar:</span>
+                <span className="font-semibold text-amber-700">
+                  {currentOrders.filter(o => o.status === "PENDING").length}
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-sm border border-blue-200">
+                <span className="text-blue-600">Perlu Print:</span>
+                <span className="font-semibold text-blue-700">
+                  {currentOrders.filter(o => o.status === "PAID").length}
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Table */}
@@ -273,7 +355,9 @@ export default function AdminPage() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">No. Urut</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Paid at</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    {activeTab === "qris" ? "Paid at" : "Created at"}
+                  </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Token</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Customer</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Size</th>
@@ -285,7 +369,7 @@ export default function AdminPage() {
               </thead>
 
               <tbody className="divide-y divide-gray-100">
-                {orders.map((o) => (
+                {currentOrders.map((o) => (
                   <tr key={o.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center justify-center h-8 w-8 rounded-full bg-pink-100 text-pink-700 font-bold text-sm">
@@ -293,10 +377,14 @@ export default function AdminPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                      {o.paid_at ? (
-                        <span className="font-mono text-xs">{o.paid_at}</span>
+                      {activeTab === "qris" ? (
+                        o.paid_at ? (
+                          <span className="font-mono text-xs">{o.paid_at}</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )
                       ) : (
-                        <span className="text-gray-400">-</span>
+                        <span className="font-mono text-xs">{o.created_at}</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -333,6 +421,16 @@ export default function AdminPage() {
                           🔗 Open
                         </a>
 
+                        {/* Cashier: Show Pay button for PENDING */}
+                        {activeTab === "cashier" && o.status === "PENDING" && (
+                          <button
+                            onClick={() => markPaid(o.id)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm transition-all"
+                          >
+                            💰 Bayar
+                          </button>
+                        )}
+
                         <button
                           onClick={() => markPrinted(o.id)}
                           disabled={o.status !== "PAID"}
@@ -350,9 +448,9 @@ export default function AdminPage() {
                   </tr>
                 ))}
 
-                {orders.length === 0 && (
+                {currentOrders.length === 0 && (
                   <tr>
-                    <td className="px-4 py-12 text-center text-gray-400" colSpan={8}>
+                    <td className="px-4 py-12 text-center text-gray-400" colSpan={9}>
                       <div className="text-4xl mb-2">📭</div>
                       <div>Tidak ada data untuk filter ini.</div>
                     </td>
@@ -368,7 +466,11 @@ export default function AdminPage() {
           <div className="flex items-start gap-2 text-sm text-blue-700">
             <span>💡</span>
             <div>
-              <span className="font-medium">Tips:</span> Gunakan filter "Butuh print saja" untuk fokus pada order yang perlu diprint (status PAID).
+              {activeTab === "qris" ? (
+                <span><span className="font-medium">Tips:</span> Gunakan filter "Butuh print saja" untuk fokus pada order yang perlu diprint (status PAID).</span>
+              ) : (
+                <span><span className="font-medium">Tips:</span> Klik "Bayar" setelah customer bayar di kasir, lalu klik "Print" untuk memproses.</span>
+              )}
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { sendOrderEmail } from "@/lib/email";
 
 const MIDTRANS_SERVER_KEY = process.env.MIDTRANS_SERVER_KEY!;
 const MIDTRANS_IS_PRODUCTION = process.env.MIDTRANS_IS_PRODUCTION === "true";
@@ -46,6 +47,7 @@ export async function POST(req: Request) {
 
     const customer_name = String(body?.customer_name ?? "").trim().slice(0, 40);
     const customer_email = String(body?.customer_email ?? "").trim().toLowerCase().slice(0, 120);
+    const payment_method = String(body?.payment_method ?? "qris");
 
     if (!fotoshare_input) return NextResponse.json({ error: "fotoshare_input required" }, { status: 400 });
     if (!Number.isFinite(qty) || qty < 1 || qty > 20) {
@@ -85,11 +87,44 @@ export async function POST(req: Request) {
         customer_email: customer_email || null,
         queue_number,
         snap_error: null,
+        payment_method: payment_method || "qris",
       })
       .select("*")
       .single();
 
     if (insErr) throw insErr;
+
+    // IF CASHIER -> Skip Midtrans
+    if (payment_method === "cashier") {
+      // Send "Order Placed - Waiting for Payment" email
+      if (customer_email) {
+        try {
+          await sendOrderEmail({
+            to: customer_email,
+            name: customer_name || "Customer",
+            orderId: midtrans_order_id,
+            amount: grossAmount,
+            items: [{
+              name: `Photo Print ${size} (${qty}x)`,
+              qty: qty,
+              price: unitPrice
+            }],
+            type: "ORDER_PLACED",
+            queueNumber: queue_number
+          });
+        } catch (e) {
+          console.error("Failed to send order email:", e);
+          // Don't fail - order is already created
+        }
+      }
+
+      return NextResponse.json({
+        ok: true,
+        order_id: order.id,
+        midtrans_order_id,
+        // No snap token needed
+      });
+    }
 
     const snapUrl = MIDTRANS_IS_PRODUCTION
       ? "https://app.midtrans.com/snap/v1/transactions"
@@ -97,7 +132,7 @@ export async function POST(req: Request) {
 
     const payload = {
       transaction_details: { order_id: midtrans_order_id, gross_amount: grossAmount },
-      enabled_payments: ["gopay"],
+      enabled_payments: ["gopay", "qris"], // Create specific payments if needed, or leave open
       item_details: [
         {
           id: `print-${size}`,

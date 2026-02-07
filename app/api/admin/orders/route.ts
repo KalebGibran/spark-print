@@ -11,6 +11,7 @@ const ALLOWED_STATUS = new Set(["ALL", "PENDING", "PAID", "PRINTED", "FAILED"]);
 const ALLOWED_SIZE = new Set(["ALL", "4x6", "strip"]);
 const ALLOWED_SORT_FIELD = new Set(["paid_at", "created_at"]);
 const ALLOWED_SORT_DIR = new Set(["desc", "asc"]);
+const ALLOWED_PAYMENT_METHOD = new Set(["ALL", "qris", "cashier"]);
 
 export async function GET(req: Request) {
   if (!isAuthed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -20,6 +21,7 @@ export async function GET(req: Request) {
   const status = (url.searchParams.get("status") || "ALL").toUpperCase();
   const needsPrint = (url.searchParams.get("needsPrint") || "0") === "1"; // PAID only
   const sizeFilter = url.searchParams.get("size") || "ALL";
+  const paymentMethod = url.searchParams.get("paymentMethod") || "ALL";
   const q = (url.searchParams.get("q") || "").trim();
   const sortField = (url.searchParams.get("sortField") || "paid_at").toLowerCase();
   const sortDir = (url.searchParams.get("sortDir") || "desc").toLowerCase();
@@ -29,15 +31,24 @@ export async function GET(req: Request) {
   if (!ALLOWED_SIZE.has(sizeFilter)) return NextResponse.json({ error: "invalid size" }, { status: 400 });
   if (!ALLOWED_SORT_FIELD.has(sortField)) return NextResponse.json({ error: "invalid sortField" }, { status: 400 });
   if (!ALLOWED_SORT_DIR.has(sortDir)) return NextResponse.json({ error: "invalid sortDir" }, { status: 400 });
+  if (!ALLOWED_PAYMENT_METHOD.has(paymentMethod)) return NextResponse.json({ error: "invalid paymentMethod" }, { status: 400 });
 
   const limit = Number.isFinite(limitRaw) ? Math.min(500, Math.max(1, limitRaw)) : 200;
 
   let query = supabaseAdmin
     .from("print_orders")
     .select(
-      "id, queue_number, customer_name, customer_email, fotoshare_token, size, qty, amount, status, created_at, paid_at, midtrans_order_id"
+      "id, queue_number, customer_name, customer_email, fotoshare_token, size, qty, amount, status, created_at, paid_at, midtrans_order_id, payment_method"
     )
     .limit(limit);
+
+  // Filter payment method
+  if (paymentMethod === "qris") {
+    // qris includes null (old orders) and explicit 'qris'
+    query = query.or("payment_method.is.null,payment_method.eq.qris");
+  } else if (paymentMethod === "cashier") {
+    query = query.eq("payment_method", "cashier");
+  }
 
   // Filter status
   if (needsPrint) {
